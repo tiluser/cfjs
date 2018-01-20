@@ -1,0 +1,83 @@
+<html>
+<head>
+    <style>
+         table, th , td  {
+             border: 1px solid grey;
+             border-collapse: collapse;
+             padding: 5px;
+         }
+        table tr:nth-child(odd) {
+            background-color: #f1f1f1;
+        }
+        table tr:nth-child(even) {
+            background-color: #ffffff;
+        }
+        td {
+             vertical-align:top;
+        }
+        .button {
+    background-color: #4CAF50; /* Green */
+    border: none;
+    color: white;
+    padding: 15px 32px;
+    text-align: center;
+    text-decoration: none;
+    display: inline-block;
+    font-size: 16px;
+}
+    </style>
+    <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.6.4/angular.min.js"></script>
+    <script src="CreoleForth.js"></script>
+    <script>
+        var parseInput = function (input) {
+            var parsedInput = input.split(/\s+/);
+            return parsedInput;
+        };
+
+        // puts textarea values onto the stack
+        var parseStack = function (taval) {
+            var ds = [];
+            ds = taval.split("\n").reverse();
+            return ds;
+        };
+        
+        var cfjsSubmit = function () {
+            var ds = document.getElementById('DataStack').value;
+            var dsVals = parseStack(ds);
+            gsp.DataStack = dsVals;
+            
+            var input = document.getElementById('Input').value
+            gsp.InputArea = input;
+            cfb1.Modules.Interpreter.doParseInput(gsp);
+            cfb1.Modules.Interpreter.doOuter(gsp);
+            document.getElementById('DataStack').value = gsp.DataStack.reverse().join("\n")
+        };
+
+    
+            var testStack = function() {
+            var ds = document.getElementById('DataStack').value;
+            var dsVals = parseStack(ds);
+            document.getElementById('DataStack').value = dsVals.reverse().join("\n");
+        }
+        
+        var testInput = function() {
+            var input = document.getElementById('Input').value;
+            var pInput = parseInput(input);
+            document.getElementById('Input').value = pInput.join("\n");
+        }
+    </script>
+</head>
+<body>
+<table>
+    <tr>
+    <th>Stack</th><th>Input</th>
+    </tr>
+    <tr>
+        <td><textarea id="DataStack" rows="20" cols="8"></textarea></td>
+        <td><textarea id="Input" rows="10" cols="75"></textarea>
+            <br /><button class="button" onclick="cfjsSubmit()">Submit</button>
+        </td>
+    </tr>
+</table>
+</body>
+</html>
