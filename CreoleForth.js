@@ -5,6 +5,27 @@ Function.prototype.method = function (name, func) {
     }
 };
 
+// Might not be safe to use
+/*
+var originalPop = Array.prototype.pop;
+Array.prototype.pop = function() {
+    console.log(this.length);
+    var popVal = originalPop.apply(this, arguments);
+    //console.log(this.length);
+    // console.log(popVal);
+    
+    if ((this.length === 0) && (popVal === "")) {
+        alert("Error: Stack underflow");
+        throw new Error("Insufficient number of stack arguments");
+        //console.log("Error: stack underflow");
+    }
+    else {
+
+        return popVal;
+    }
+};
+*/
+
 Number.method('integer', function () {
     return Math[this < 0 ? 'ceil' : 'floor'](this);
 });
@@ -13,19 +34,36 @@ String.method('trim', function () {
     return this.replace(/^\s+|\s$/g, '');
 });
 
+var BasicForthConstants = function () {
+    "use strict";
+
+    if (!(this instanceof BasicForthConstants)) {
+        throw new Error("BasicForthConstants needs to be called with the new keyword");
+    }
+    this.SmudgeFlag = "SMUDGED";
+    this.ImmediateVocab = "IMMEDIATE";
+    this.BranchloopVocab = "BRANCHLOOP";
+    this.PrefilterVocab = "PREFILTER";
+    this.PostfilterVocab = "POSTFILTER";
+    this.EndOfSingleLineComment = "\n";
+    this.EndOfMultilineComment = ")";
+    this.ExecZeroAction = "EXECO";
+    this.CompLitAction = "COMPLIT";
+};
+
 var GlobalSimpleProps = function (cfb) {
     "use strict";
 
     if (!(this instanceof GlobalSimpleProps)) {
         throw new Error("GlobalSimpleProps needs to be called with the new keyword");
-    }
+    } 
     this.CreoleForthBundle = cfb;
     this.DataStack = [];
     this.ReturnStack = [];
     this.VocabStack = [];
     this.PrefilterStack = [];
     this.PostfilterStack = [];
-    this.PAD = [];
+    this.PADarea = [];
     this.ParsedInput = [];
     this.LoopName = [];
     this.LoopIndex = [];
@@ -37,8 +75,37 @@ var GlobalSimpleProps = function (cfb) {
     this.OutputArea = "";
     this.CurrentVocab = "";
     this.HelpCommentField = "";
-    this.Scratch = null;
+    this.BFC = new BasicForthConstants();
 };
+
+GlobalSimpleProps.method("cleanFields", function () {
+    this.DataStack = [];
+    this.ReturnStack = [];
+    this.PADarea = [];
+    this.ParsedInput = [];
+    this.LoopName = [];
+    this.LoopIndex = [];
+    this.LoopEnd = [];
+    this.OuterPtr = 0;
+    this.InnerPtr = 0;
+    this.ParamFieldPtr = 0;
+    this.InputArea = "";
+    this.OutputArea = "";
+});
+
+GlobalSimpleProps.method('cfPop', function(arr) {
+    
+    console.log(arr.length);
+    if ((arr.length === 1) && (arr[0] === "")) {
+        this.cleanFields();
+        alert("Error: Stack underflow");
+        throw new Error("Insufficient number of stack arguments");       
+    }
+    else { 
+        return arr.pop();
+    }
+    
+});
 
 // These objects are to be stored on the return stack
 var ReturnLoc = function (dictAddr, pfAddr) {
@@ -50,7 +117,7 @@ var ReturnLoc = function (dictAddr, pfAddr) {
     this.ParamFieldAddr = pfAddr;
 };
 
-// Colon definitions are built in pad - each new entry is a triplet consisting of the
+// Colon definitions are built in the PAD area - each new entry is a triplet consisting of the
 // word's fully qualified name, its dictionary address, and associated compilation action. 
 var CompileInfo = function (fqName, address, compileAction) {
     "use strict";
@@ -168,16 +235,30 @@ CorePrims.method("doOver", function (gsp) {
 });
 
 CorePrims.method("doDrop", function (gsp) {
-    gsp.DataStack.pop();
+    gsp.cfPop(gsp.DataStack);
+    // gsp.DataStack.pop();
 });
 
 CorePrims.method("doDepth", function (gsp) {
-    gsp.DataStack.push(gsp.DataStack.length);
+    gsp.DataStack.push(gsp.DataStack.length - 1);
 });
 
 CorePrims.method("doHello", function (gsp) {
-    gsp.PAD = "Hello World";
-    alert(gsp.PAD);
+    alert("Hello World");
+});
+
+CorePrims.method("doTulip", function (gsp) {
+    alert("Tulip");
+});
+
+
+CorePrims.method("doVList", function (gsp) {
+    var i;
+    var definitionTable;
+    
+    for (i = 0; i < gsp.CreoleForthBundle.row; i++) {
+        definitionTable += "<tr>" + "<td>" + "</tr>";
+    }
 });
 
 var Interpreter = function () {
@@ -245,8 +326,8 @@ Interpreter.method("doOuter", function (gsp) {
     
     while (gsp.OuterPtr < gsp.ParsedInput.length) {
         rawWord = gsp.ParsedInput[gsp.OuterPtr];
-        searchVocabPtr = 0;
-        while (searchVocabPtr < gsp.VocabStack.length) {
+        searchVocabPtr = gsp.VocabStack.length - 1;
+        while (searchVocabPtr >= 0) {
             fqWord = rawWord.toUpperCase() + "." + gsp.VocabStack[searchVocabPtr];
             if (fqWord in gsp.CreoleForthBundle) {
                 gsp.InnerPtr = gsp.CreoleForthBundle[fqWord].IndexField;
@@ -255,7 +336,7 @@ Interpreter.method("doOuter", function (gsp) {
                 break;
             }
             else {
-                searchVocabPtr += 1;
+                searchVocabPtr -= 1;
             }
         }
         if (isFound === false) {
@@ -273,10 +354,218 @@ var Compiler = function () {
     this.title = "Compiler grouping";
 };
 
+Compiler.method("CompileInParamField", function (gsp) {
+    var newRow = gsp.CreoleForthBundle.row;
+    var token = gsp.DataStack.pop();
+    var newCreoleWord = gsp.CreoleForthBundle.Address[newRow];
+    newCreoleWord.ParamField.push(token);
+    gsp.ParamFieldPtr = newCreoleWord.ParamField.length - 1;
+});
+
+// Executes at time zero of colon compilation, when CompileInfo triplets are placed in the PAD area.
+// Example : comment handling. The pointer is moved past the comments. 
+Compiler.method("DoExecute0", function (gsp) {
+      
+});
+
+// Executes at time one of colon compilation, then the information in the CompileInfo triplets are
+// passed to the standar interpreter for execution. Example : immediate words such as IF.
+Compiler.method("doExecute", function (gsp) {
+    var address = gsp.DataStack.pop();
+    gsp.CreoleForthBundle.Address[address].CodeField(gsp);  
+});
+
+Compiler.method("doHere", function (gsp) {
+    var hereLoc = gsp.CreoleForthBundle.row + 1;
+    gsp.DataStack.push(hereLoc);
+});
+
+Compiler.method("CompileColon", function (gsp) {
+    var hereLoc = gsp.CreoleForthBundle.row + 1;
+    var name = gsp.ParsedInput[gsp.OuterPtr + 1];
+    var params = [];
+    var data = [];
+    var help = "TODO: ";
+    var rawWord;
+    var searchVocabPtr;
+    var isFound;
+    var compAction;
+    var compInfo;
+    var isSemiPresent = false;
+    var colonIndex = -1;
+    var i;
+    var gspComp = new GlobalSimpleProps(gsp.CreoleForthBundle);
+    
+    // Elementary syntax check to avoid allowing the page to hang. If A colon isn't followed by a matching semicolon, you get an error message
+    // and the stacks and input are cleared.
+    for (i = 0; i < gsp.ParsedInput.length; i++) {
+        if (gsp.ParsedInput[i] === ":") {
+            colonIndex = i;
+        }
+        if (gsp.ParsedInput[i] === ";" && i > colonIndex) {
+            isSemiPresent = true;    
+        }
+    }
+    if (isSemiPresent === false) {
+        alert("Error: colon def must have matching semicolon");
+        gsp.cleanFields();
+        return;
+    }
+    
+    // Compilation is started when the IMMEDIATE vocabulary is pushed onto the vocabulary stack. No need for the usual Forth STATE flag.
+    gsp.VocabStack.push(gsp.BFC.ImmediateVocab);
+    var cw = new CreoleWord(name, gsp.CreoleForthBundle.Modules.Interpreter.doColon, gsp.CurrentVocab, "COMPINPF", help, hereLoc - 1, hereLoc, hereLoc - 1, hereLoc, params, data); 
+    // The smudge flag avoids accidental recursion. But it's easy enough to get around if you want to. 
+    var fqNameSmudged = name + "." + gsp.CurrentVocab + "." + gsp.BFC.SmudgeFlag;
+    var fqName = name + "." + gsp.CurrentVocab;
+    
+    gsp.CreoleForthBundle[fqNameSmudged] = cw;
+    gsp.CreoleForthBundle.row += 1;
+    gsp.CreoleForthBundle.Address[gsp.CreoleForthBundle.row] = gsp.CreoleForthBundle[fqNameSmudged];
+    gsp.OuterPtr += 2;
+    // parameter field contents are set up in the PAD area. Each word is looked up one at a time in the dictionary, and its name, address, and compilation action
+    // are placed in the CompileInfo triplet. 
+    while (gsp.OuterPtr < gsp.ParsedInput.length && gsp.VocabStack[gsp.VocabStack.length - 1] === gsp.BFC.ImmediateVocab && gsp.ParsedInput[gsp.OuterPtr] != ";" ) {
+        rawWord = gsp.ParsedInput[gsp.OuterPtr];   
+        searchVocabPtr = gsp.VocabStack.length - 1;
+        isFound = false;
+        while (searchVocabPtr >= 0) {
+            fqWord = rawWord.toUpperCase() + "." + gsp.VocabStack[searchVocabPtr];
+            if (fqWord in gsp.CreoleForthBundle) {
+                compAction = gsp.CreoleForthBundle[fqWord].CompileActionField;
+                if (compAction != gsp.BFC.ExecZeroAction) {
+                    compInfo = new CompileInfo(fqWord, gsp.CreoleForthBundle[fqWord].IndexField, compAction);
+                    gsp.PADarea.push(compInfo);  
+                }
+                else {
+                    // To be implemented - this is stuff where the outer ptr is manipulated such as comments
+                    alert("To be implemented");
+                }
+                isFound = true;
+                break;
+            }
+            else {
+                searchVocabPtr -= 1;
+            }
+        }
+        // if no dictionary entry is found, it's tagged as a literal.
+        if (isFound === false) {
+            compInfo = new CompileInfo(fqWord, gsp.CreoleForthBundle[fqWord].IndexField, gsp.BFC.CompLitAction);
+            gsp.PADarea.push(compInfo);
+        }
+        gsp.OuterPtr += 1;   
+    }   
+    //  1. Builds the definition in the parameter field from the PAD area. Very simple; the address of each word appears before its associated
+    //    compilation action. Most of the time, it will be COMPINPF, which will simply compile the word into the parameter field. 
+    //    Compiling words such as CompileIf will execute since that's the compilation action they're tagged with. 
+    //  2. Attaches it to the smudged definition
+    //  3. "Unsmudges" the new definition by copying it to its proper fully-qualified property and place in the rows array.
+    //  4. Deletes the smudged definition.
+    //  5. Pops the IMMEDIATE vocabulary off the vocabulary stack and halts compilation. 
+    i = 0;    
+    gspComp.VocabStack = gsp.VocabStack;
+    // Putting the args and compilation actions together and executing then executing them seems to cause a problem with compiling words.
+    // Getting around this by putting one arg on the stack, one in the input area, then executing.
+    while (i < gsp.PADarea.length)
+    {
+        compInfo = gsp.PADarea[i];
+        gspComp.DataStack.push(compInfo.Address);
+        gspComp.InputArea = compInfo.CompileAction;
+        gspComp.CreoleForthBundle.Modules.Interpreter.doParseInput(gspComp);
+        gspComp.CreoleForthBundle.Modules.Interpreter.doOuter(gspComp);
+        i += 1;
+    }
+    
+    gspComp.InputArea = ";";
+    gspComp.CreoleForthBundle.Modules.Interpreter.doParseInput(gspComp);
+    gspComp.CreoleForthBundle.Modules.Interpreter.doOuter(gspComp);
+
+    cw = gspComp.CreoleForthBundle.Address[gspComp.CreoleForthBundle.row];
+    gsp.CreoleForthBundle[fqName] = cw;
+    delete gsp.CreoleForthBundle[fqNameSmudged];
+    gsp.VocabStack.pop();       
+});
+
+Compiler.method("doSemi", function (gsp) {
+    alert("Compilation is complete");    
+});
+
+// Compiling wordsCreoleWord = gsp.CreoleForthBundle.Address[row]; have two separate actions - 
+// a compile-time and a run-time action.
+Compiler.method("CompileIf", function (gsp) {
+    var newRow = gsp.CreoleForthBundle.row;
+    var newCreoleWord = gsp.CreoleForthBundle.Address[newRow];
+    console.log(typeof newCreoleWord);
+    var zeroBranchAddr = gsp.CreoleForthBundle["0BRANCH.IMMEDIATE"].IndexField;
+    
+    newCreoleWord.ParamField.push(zeroBranchAddr);
+    newCreoleWord.ParamField.push(-1);
+    gsp.ParamFieldPtr = newCreoleWord.ParamField.length - 1;
+    gsp.DataStack.push(gsp.ParamFieldPtr);    
+});
+
+Compiler.method("CompileElse", function (gsp) {
+    var newRow = gsp.CreoleForthBundle.row;
+    var newCreoleWord = gsp.CreoleForthBundle.Address[newRow];
+    var jumpAddr = gsp.CreoleForthBundle["JUMP.IMMEDIATE"].IndexField;
+    console.log("Jump address is " + jumpAddr);
+    var elseAddr = gsp.CreoleForthBundle["doElse.IMMEDIATE"].IndexField;
+    var jumpAddrPFLoc;
+    var zeroBrAddrPFLoc;
+    
+    newCreoleWord.ParamField.push(jumpAddr);
+    newCreoleWord.ParamField.push(-1);   
+    jumpAddrPFLoc = newCreoleWord.ParamField.length - 1;
+    newCreoleWord.ParamField.push(elseAddr);
+    zeroBrAddrPFLoc = gsp.DataStack.pop();
+    newCreoleWord.ParamField[zeroBrAddrPFLoc] = newCreoleWord.ParamField.length - 1;
+    gsp.DataStack.push(jumpAddrPFLoc);
+    gsp.ParamFieldPtr = newCreoleWord.ParamField.length - 1;
+});
+
+Compiler.method("CompileThen", function (gsp) {
+    var newRow = gsp.CreoleForthBundle.row;
+    var newCreoleWord = gsp.CreoleForthBundle.Address[newRow];
+    var branchPFLoc = gsp.DataStack.pop();
+    var thenAddr = gsp.CreoleForthBundle["doThen.IMMEDIATE"].IndexField;
+    
+    newCreoleWord.ParamField.push(thenAddr);
+    newCreoleWord.ParamField[branchPFLoc] = newCreoleWord.ParamField.length - 1;
+});
+
+
+Compiler.method("do0Branch", function (gsp) {
+    var currWord = gsp.CreoleForthBundle.Address[gsp.InnerPtr]; 
+    var paramField = currWord.ParamField;
+    var rLoc = gsp.ReturnStack.pop();
+    var jumpAddr = paramField[rLoc.ParamFieldAddr];
+    var branchFlag = gsp.DataStack.pop();
+    
+    if (branchFlag == 0) {
+        gsp.ParamFieldPtr = jumpAddr;  
+    }
+    else {
+        gsp.ParamFieldPtr += 1;
+    }
+    rLoc.ParamFieldAddr = gsp.ParamFieldPtr;
+    gsp.ReturnStack.push(rLoc);
+});
+
+Compiler.method("doJump", function (gsp) {
+    var currWord = gsp.CreoleForthBundle.Address[gsp.InnerPtr]; 
+    var paramField = currWord.ParamField;
+    var jumpAddr = paramField[gsp.ParamFieldPtr + 1];
+    var rLoc = gsp.ReturnStack.pop();
+    
+    gsp.ParamFieldPtr = jumpAddr;
+    rLoc.ParamFieldAddr = gsp.ParamFieldPtr;
+    gsp.ReturnStack.push(rLoc);
+});
+
 var LogicOps = function () {
     "use strict";
     if (!(this instanceof LogicOps)) {
-                      throw new Error("LogicOps needs to be called with the new keyword");
+        throw new Error("LogicOps needs to be called with the new keyword");
     }
     this.title = "Logical operatives grouping";
 };
@@ -401,7 +690,7 @@ var AppSpec = function () {
 
 var CreoleWord =
     function (NameField, CodeField, Vocabulary, CompileActionField, HelpField,
-              PrevRowLocField, RowLocField, LinkField, IndexField, ParamField) {
+              PrevRowLocField, RowLocField, LinkField, IndexField, ParamField, DataField) {
         "use strict"
 
         if (!(this instanceof CreoleWord)) {
@@ -418,16 +707,8 @@ var CreoleWord =
         this.LinkField = LinkField;
         this.IndexField = IndexField;
         this.ParamField = ParamField;
+        this.DataField = DataField;
 };
-
-/*
-Function.prototype.method = function (name, func) {
-    if (!this.prototype[name]) {
-        this.prototype[name] = func;
-        return this;
-    }
-}
-*/
 
 var Modules = function (coreprims, interpreter, compiler, logicops, appspec) {
     this.CorePrims = coreprims;
@@ -450,8 +731,9 @@ var CreoleForthBundle = function (modules) {
 
 CreoleForthBundle.method("BuildPrimitive", function(name, cf, vocab, compAction, help) {
     var params = [];
+    var data = [];
   
-    var cw = new CreoleWord(name, cf, vocab, compAction, help, this.row - 1, this.row, this.row - 1, this.row, params);
+    var cw = new CreoleWord(name, cf, vocab, compAction, help, this.row - 1, this.row, this.row - 1, this.row, params, data);
     var fqName = name + "." + vocab;
     this[fqName] = cw;
     this.Address[this.row] = this[fqName];
@@ -475,6 +757,8 @@ gsp.DataStack = [];
 gsp.VocabStack.push("ONLY");
 gsp.VocabStack.push("FORTH");
 gsp.VocabStack.push("APPSPEC");
+gsp.VocabStack.push("IMMEDIATE");
+gsp.CurrentVocab = "FORTH";
 
 // BuildPrimitive(objFbps As ForthBundleParamSet, psName As String, psClassModule As String, psCodeField As String, psVocab As String, psCompileAction As String, psHelp As String)
 var cfb1 = new CreoleForthBundle(modules);
@@ -483,41 +767,60 @@ gsp.CreoleForthBundle = cfb1;
 // The onlies
 cfb1.BuildPrimitive("ONLY", cfb1.Modules.Interpreter.doOnly, "ONLY", "EXECUTE","( -- ) Empties the vocabulary stack, then puts ONLY on it");
 cfb1.BuildPrimitive("FORTH", cfb1.Modules.Interpreter.doForth, "ONLY", "EXECUTE","( -- ) Puts FORTH on the vocabulary stack");
-cfb1.BuildPrimitive("NOP", cfb1.Modules.CorePrims.doNOP, "ONLY", "COMPF","( -- ) Do-nothing primitive which is surprisingly useful");
+cfb1.BuildPrimitive("NOP", cfb1.Modules.CorePrims.doNOP, "ONLY", "COMPINPF","( -- ) Do-nothing primitive which is surprisingly useful");
 
-cfb1.BuildPrimitive("HELLO", cfb1.Modules.CorePrims.doHello, "FORTH", "COMPF","( -- ) Pops up an alert saying Hello World");
+cfb1.BuildPrimitive("HELLO", cfb1.Modules.CorePrims.doHello, "FORTH", "COMPINPF","( -- ) Pops up an alert saying Hello World");
+cfb1.BuildPrimitive("TULIP", cfb1.Modules.CorePrims.doTulip, "FORTH", "COMPINPF","( -- ) Pops up an alert saying Tulip");
+
 
 // Basic math
-cfb1.BuildPrimitive("+", cfb1.Modules.CorePrims.doPlus, "FORTH", "COMPF","( n1 n2 -- sum ) Adds two numbers on the stack");
-cfb1.BuildPrimitive("-", cfb1.Modules.CorePrims.doMinus, "FORTH", "COMPF","( n1 n2 -- difference ) Subtracts two numbers on the stack");
-cfb1.BuildPrimitive("*", cfb1.Modules.CorePrims.doMultiply, "FORTH", "COMPF","( n1 n2 -- product ) Multiplies two numbers on the stack");
-cfb1.BuildPrimitive("/", cfb1.Modules.CorePrims.doDivide, "FORTH", "COMPF","( n1 n2 -- quotient ) Divides two numbers on the stack");
-cfb1.BuildPrimitive("%", cfb1.Modules.CorePrims.doMod, "FORTH", "COMPF","( n1 n2 -- remainder ) Returns remainder of division operation");
+cfb1.BuildPrimitive("+", cfb1.Modules.CorePrims.doPlus, "FORTH", "COMPINPF","( n1 n2 -- sum ) Adds two numbers on the stack");
+cfb1.BuildPrimitive("-", cfb1.Modules.CorePrims.doMinus, "FORTH", "COMPINPF","( n1 n2 -- difference ) Subtracts two numbers on the stack");
+cfb1.BuildPrimitive("*", cfb1.Modules.CorePrims.doMultiply, "FORTH", "COMPINPF","( n1 n2 -- product ) Multiplies two numbers on the stack");
+cfb1.BuildPrimitive("/", cfb1.Modules.CorePrims.doDivide, "FORTH", "COMPINPF","( n1 n2 -- quotient ) Divides two numbers on the stack");
+cfb1.BuildPrimitive("%", cfb1.Modules.CorePrims.doMod, "FORTH", "COMPINPF","( n1 n2 -- remainder ) Returns remainder of division operation");
 
 // Stack manipulation
-cfb1.BuildPrimitive("DUP", cfb1.Modules.CorePrims.doDup, "FORTH", "COMPF","( val --  val val ) Duplicates the argument on top of the stack");
-cfb1.BuildPrimitive("SWAP", cfb1.Modules.CorePrims.doSwap, "FORTH", "COMPF","( val1 val2 -- val2 val1 ) Swaps the positions of the top two stack arguments");
-cfb1.BuildPrimitive("ROT", cfb1.Modules.CorePrims.doRot, "FORTH", "COMPF","( val1 val2 val3 -- val2 val3 val1 ) Moves the third stack argument to the top");
-cfb1.BuildPrimitive("-ROT", cfb1.Modules.CorePrims.doMinusRot, "FORTH", "COMPF","( val1 val2 val3 -- val3 val1 val2 ) Moves the top stack argument to the third position");
-cfb1.BuildPrimitive("NIP", cfb1.Modules.CorePrims.doNip, "FORTH", "COMPF","( val1 val2 -- val2 ) Removes second stack argument");
-cfb1.BuildPrimitive("TUCK", cfb1.Modules.CorePrims.doTuck, "FORTH", "COMPF","( val1 val2 -- val2 val1 val2 ) Copies top stack argument under second argument");
-cfb1.BuildPrimitive("OVER", cfb1.Modules.CorePrims.doOver, "FORTH", "COMPF","( val1 val2 -- val1 val2 val1 ) Copies second stack argument to the top of the stack");
-cfb1.BuildPrimitive("DROP", cfb1.Modules.CorePrims.doDrop, "FORTH", "COMPF","( val -- ) Drops the argument at the top of the stack");
-cfb1.BuildPrimitive("DEPTH", cfb1.Modules.CorePrims.doDepth, "FORTH", "COMPF","( -- n ) Returns the stack depth");
+cfb1.BuildPrimitive("DUP", cfb1.Modules.CorePrims.doDup, "FORTH", "COMPINPF","( val --  val val ) Duplicates the argument on top of the stack");
+cfb1.BuildPrimitive("SWAP", cfb1.Modules.CorePrims.doSwap, "FORTH", "COMPINPF","( val1 val2 -- val2 val1 ) Swaps the positions of the top two stack arguments");
+cfb1.BuildPrimitive("ROT", cfb1.Modules.CorePrims.doRot, "FORTH", "COMPINPF","( val1 val2 val3 -- val2 val3 val1 ) Moves the third stack argument to the top");
+cfb1.BuildPrimitive("-ROT", cfb1.Modules.CorePrims.doMinusRot, "FORTH", "COMPINPF","( val1 val2 val3 -- val3 val1 val2 ) Moves the top stack argument to the third position");
+cfb1.BuildPrimitive("NIP", cfb1.Modules.CorePrims.doNip, "FORTH", "COMPINPF","( val1 val2 -- val2 ) Removes second stack argument");
+cfb1.BuildPrimitive("TUCK", cfb1.Modules.CorePrims.doTuck, "FORTH", "COMPINPF","( val1 val2 -- val2 val1 val2 ) Copies top stack argument under second argument");
+cfb1.BuildPrimitive("OVER", cfb1.Modules.CorePrims.doOver, "FORTH", "COMPINPF","( val1 val2 -- val1 val2 val1 ) Copies second stack argument to the top of the stack");
+cfb1.BuildPrimitive("DROP", cfb1.Modules.CorePrims.doDrop, "FORTH", "COMPINPF","( val -- ) Drops the argument at the top of the stack");
+cfb1.BuildPrimitive("DEPTH", cfb1.Modules.CorePrims.doDepth, "FORTH", "COMPINPF","( -- n ) Returns the stack depth");
 
 // Logical operatives
-cfb1.BuildPrimitive("=", cfb1.Modules.LogicOps.doEquals, "FORTH", "COMPF","( val1 val2 -- flag ) -1 if equal, 0 otherwise");
-cfb1.BuildPrimitive("<>", cfb1.Modules.LogicOps.doNotEquals, "FORTH", "COMPF","( val1 val2 -- flag ) 0 if equal, -1 otherwise");
-cfb1.BuildPrimitive("<", cfb1.Modules.LogicOps.doLessThan, "FORTH", "COMPF","( val1 val2 -- flag ) -1 if less than, 0 otherwise");
-cfb1.BuildPrimitive(">", cfb1.Modules.LogicOps.doGreaterThan, "FORTH", "COMPF","( val1 val2 -- flag ) -1 if greater than, 0 otherwise");
-cfb1.BuildPrimitive("<=", cfb1.Modules.LogicOps.doLessThanOrEquals, "FORTH", "COMPF","( val1 val2 -- flag ) -1 if less than or equal to, 0 otherwise");
-cfb1.BuildPrimitive(">=", cfb1.Modules.LogicOps.doGreaterThanOrEquals, "FORTH", "COMPF","( val1 val2 -- flag ) -1 if greater than or equal to, 0 otherwise");
-cfb1.BuildPrimitive("NOT", cfb1.Modules.LogicOps.doNot, "FORTH", "COMPF","( val -- opval ) -1 if 0, 0 otherwise");
-cfb1.BuildPrimitive("AND", cfb1.Modules.LogicOps.doAnd, "FORTH", "COMPF","( val1 val2 -- flag ) -1 if both arguments are non-zero, 0 otherwise");
-cfb1.BuildPrimitive("OR", cfb1.Modules.LogicOps.doOr, "FORTH", "COMPF","( val1 val2 -- flag ) -1 if one or both arguments are non-zero, 0 otherwise");
-cfb1.BuildPrimitive("XOR", cfb1.Modules.LogicOps.doXor, "FORTH", "COMPF","( val1 val2 -- flag ) -1 if one and only one argument is non-zero, 0 otherwise");
+cfb1.BuildPrimitive("=", cfb1.Modules.LogicOps.doEquals, "FORTH", "COMPINPF","( val1 val2 -- flag ) -1 if equal, 0 otherwise");
+cfb1.BuildPrimitive("<>", cfb1.Modules.LogicOps.doNotEquals, "FORTH", "COMPINPF","( val1 val2 -- flag ) 0 if equal, -1 otherwise");
+cfb1.BuildPrimitive("<", cfb1.Modules.LogicOps.doLessThan, "FORTH", "COMPINPF","( val1 val2 -- flag ) -1 if less than, 0 otherwise");
+cfb1.BuildPrimitive(">", cfb1.Modules.LogicOps.doGreaterThan, "FORTH", "COMPINPF","( val1 val2 -- flag ) -1 if greater than, 0 otherwise");
+cfb1.BuildPrimitive("<=", cfb1.Modules.LogicOps.doLessThanOrEquals, "FORTH", "COMPINPF","( val1 val2 -- flag ) -1 if less than or equal to, 0 otherwise");
+cfb1.BuildPrimitive(">=", cfb1.Modules.LogicOps.doGreaterThanOrEquals, "FORTH", "COMPINPF","( val1 val2 -- flag ) -1 if greater than or equal to, 0 otherwise");
+cfb1.BuildPrimitive("NOT", cfb1.Modules.LogicOps.doNot, "FORTH", "COMPINPF","( val -- opval ) -1 if 0, 0 otherwise");
+cfb1.BuildPrimitive("AND", cfb1.Modules.LogicOps.doAnd, "FORTH", "COMPINPF","( val1 val2 -- flag ) -1 if both arguments are non-zero, 0 otherwise");
+cfb1.BuildPrimitive("OR", cfb1.Modules.LogicOps.doOr, "FORTH", "COMPINPF","( val1 val2 -- flag ) -1 if one or both arguments are non-zero, 0 otherwise");
+cfb1.BuildPrimitive("XOR", cfb1.Modules.LogicOps.doXor, "FORTH", "COMPINPF","( val1 val2 -- flag ) -1 if one and only one argument is non-zero, 0 otherwise");
 
-// # 28 
-cfb1.BuildPrimitive("TESTCOLON", cfb1.Modules.Interpreter.doColon, "FORTH", "COMPF","( val1 val2 -- flag ) Test for colon definition");
-cfb1["TESTCOLON.FORTH"].ParamField = [3, 2, 3];
-cfb1.Address[28].ParamField = [3, 2, 3];
+// Compiler definitions
+cfb1.BuildPrimitive("COMPINPF", cfb1.Modules.Compiler.CompileInParamField, "IMMEDIATE", "COMPINPF","( n --). Compiles value off the TOS into the next parameter field cell");
+cfb1.BuildPrimitive("EXECUTE", cfb1.Modules.Compiler.doExecute, "FORTH", "COMPINPF","( address --). Executes the word corresponding to the address on the stack");
+cfb1.BuildPrimitive(":", cfb1.Modules.Compiler.CompileColon, "FORTH", "COMPINPF","( -- ) Starts compilation of a colon definition");
+cfb1.BuildPrimitive(";", cfb1.Modules.Compiler.doSemi, "IMMEDIATE", "EXECUTE","( -- ) Terminates compilation of a colon definition");
+cfb1.BuildPrimitive("HERE", cfb1.Modules.Compiler.doHere, "FORTH", "COMPINPF","( -- location ) Returns address of the next available dictionary location");
+
+cfb1.BuildPrimitive("IF", cfb1.Modules.Compiler.CompileIf, "IMMEDIATE", "EXECUTE","( -- ). Compile-time code for IF which should not be used outside of a colon definition");
+cfb1.BuildPrimitive("ELSE", cfb1.Modules.Compiler.CompileElse, "IMMEDIATE", "EXECUTE","( -- location ) Compile-time code for ELSE which should not be used outside of a colon definition");
+cfb1.BuildPrimitive("THEN", cfb1.Modules.Compiler.CompileThen, "IMMEDIATE", "EXECUTE","( -- location ) Compile-time code for THEN which should not be used outside of a colon definition");
+cfb1.BuildPrimitive("0BRANCH", cfb1.Modules.Compiler.do0Branch, "IMMEDIATE", "NOP","( flag -- ) Run-time code for IF");
+cfb1.BuildPrimitive("JUMP", cfb1.Modules.Compiler.doJump, "IMMEDIATE", "NOP","( -- ) Jumps unconditionally to the parameter field location next to it and is compiled by ELSE");
+cfb1.BuildPrimitive("doElse", cfb1.Modules.CorePrims.doNOP, "IMMEDIATE", "NOP","( -- ) Run-time code for ELSE");
+cfb1.BuildPrimitive("doThen", cfb1.Modules.CorePrims.doNOP, "IMMEDIATE", "NOP","( -- ) Run-time code for THEN");
+
+/*
+// For testing only
+cfb1.BuildPrimitive("TESTCOLON", cfb1.Modules.Interpreter.doColon, "FORTH", "COMPINPF","( val1 val2 -- flag ) Test for colon definition");
+cfb1["TESTCOLON.FORTH"].ParamField = [37, 5, 3, 38, 7, 39, 4, 40];
+cfb1.Address[41].ParamField = [37, 5, 3, 38, 7, 39, 4, 40];
+*/

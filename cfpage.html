@@ -50,21 +50,8 @@
             gsp.InputArea = input;
             cfb1.Modules.Interpreter.doParseInput(gsp);
             cfb1.Modules.Interpreter.doOuter(gsp);
-            document.getElementById('DataStack').value = gsp.DataStack.reverse().join("\n")
-        };
-
-    
-            var testStack = function() {
-            var ds = document.getElementById('DataStack').value;
-            var dsVals = parseStack(ds);
-            document.getElementById('DataStack').value = dsVals.reverse().join("\n");
-        }
-        
-        var testInput = function() {
-            var input = document.getElementById('Input').value;
-            var pInput = parseInput(input);
-            document.getElementById('Input').value = pInput.join("\n");
-        }
+            document.getElementById('DataStack').value = gsp.DataStack.reverse().join("\n");
+        };    
     </script>
 </head>
 <body>
