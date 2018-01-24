@@ -282,6 +282,7 @@ Interpreter.method("doParseInput", function (gsp) {
     var codeLine = lines.join(" ");
     console.log(codeLine);
     gsp.ParsedInput = codeLine.trim().split(/\s+/);
+    gsp.InputArea = "";
 });
 
 Interpreter.method("doInner", function (gsp) {
@@ -353,7 +354,9 @@ Interpreter.method("doOuter", function (gsp) {
             gsp.DataStack.push(rawWord);
         }
         gsp.OuterPtr += 1;     
-    }    
+    }  
+    gsp.InputArea = "";
+    gsp.ParsedInput = [];
 });
 
 var Compiler = function () {
@@ -461,7 +464,6 @@ Compiler.method("CompileColon", function (gsp) {
                 }
                 else {
                     // This is stuff where the outer ptr is manipulated such as comments
-                    console.log(fqWord + " : " + compAction);
                     codeField = gsp.CreoleForthBundle[fqWord].CodeField;
                     codeField(gsp);
                 }
@@ -475,7 +477,7 @@ Compiler.method("CompileColon", function (gsp) {
     
         // if no dictionary entry is found, it's tagged as a literal.
         if (isFound === false) {
-            compInfo = new CompileInfo(fqWord, gsp.CreoleForthBundle[fqWord].IndexField, gsp.BFC.CompLitAction);
+            compInfo = new CompileInfo(rawWord, rawWord, gsp.BFC.CompLitAction);
             gsp.PADarea.push(compInfo);
         }
         gsp.OuterPtr += 1;   
@@ -508,7 +510,8 @@ Compiler.method("CompileColon", function (gsp) {
     cw = gspComp.CreoleForthBundle.Address[gspComp.CreoleForthBundle.row];
     gsp.CreoleForthBundle[fqName] = cw;
     delete gsp.CreoleForthBundle[fqNameSmudged];
-    gsp.VocabStack.pop();       
+    gsp.VocabStack.pop();    
+    gsp.PADarea = [];
 });
 
 Compiler.method("doSemi", function (gsp) {
@@ -586,6 +589,28 @@ Compiler.method("doJump", function (gsp) {
     rLoc.ParamFieldAddr = gsp.ParamFieldPtr;
     gsp.ReturnStack.push(rLoc);
 });
+
+Compiler.method("CompileLiteral", function (gsp) {
+    var newRow = gsp.CreoleForthBundle.row;
+    var newCreoleWord = gsp.CreoleForthBundle.Address[newRow];
+    var doLitAddr = gsp.CreoleForthBundle["doLiteral.IMMEDIATE"].IndexField;
+    var litVal = gsp.DataStack.pop();
+    
+    newCreoleWord.ParamField.push(doLitAddr);
+    newCreoleWord.ParamField.push(litVal);
+    gsp.ParamFieldPtr = newCreoleWord.length - 1;
+});
+
+Compiler.method("doLiteral", function (gsp) {
+    var rLoc = gsp.ReturnStack.pop();
+    var litVal = gsp.CreoleForthBundle.Address[rLoc.DictAddr].ParamField[rLoc.ParamFieldAddr];
+    
+    gsp.DataStack.push(litVal);
+    rLoc.ParamFieldAddr += 1;
+    gsp.ParamFieldPtr = rLoc.ParamFieldAddr;
+    gsp.ReturnStack.push(rLoc);
+});
+
 
 var LogicOps = function () {
     "use strict";
@@ -842,6 +867,9 @@ cfb1.BuildPrimitive("0BRANCH", cfb1.Modules.Compiler.do0Branch, "IMMEDIATE", "NO
 cfb1.BuildPrimitive("JUMP", cfb1.Modules.Compiler.doJump, "IMMEDIATE", "NOP","( -- ) Jumps unconditionally to the parameter field location next to it and is compiled by ELSE");
 cfb1.BuildPrimitive("doElse", cfb1.Modules.CorePrims.doNOP, "IMMEDIATE", "NOP","( -- ) Run-time code for ELSE");
 cfb1.BuildPrimitive("doThen", cfb1.Modules.CorePrims.doNOP, "IMMEDIATE", "NOP","( -- ) Run-time code for THEN");
+
+cfb1.BuildPrimitive("COMPLIT", cfb1.Modules.Compiler.CompileLiteral, "IMMEDIATE", "EXECUTE","( -- ) Compiles doLit and a literal into the dictionary");
+cfb1.BuildPrimitive("doLiteral", cfb1.Modules.Compiler.doLiteral, "IMMEDIATE", "NOP","( -- lit ) Run-time code that pushes a literal onto the stack");
 
 cfb1.BuildPrimitive("\\", cfb1.Modules.Compiler.doSingleLineCmts, "FORTH", "EXEC0","( -- ) Single-line comment handling");
 cfb1.BuildPrimitive("__#EOL#__", cfb1.Modules.CorePrims.doNOP, "FORTH", "NOP","( -- ) EOL marker");
