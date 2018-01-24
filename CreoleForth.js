@@ -47,16 +47,16 @@ var BasicForthConstants = function () {
     this.PostfilterVocab = "POSTFILTER";
     this.EndOfSingleLineComment = "\n";
     this.EndOfMultilineComment = ")";
-    this.ExecZeroAction = "EXECO";
+    this.ExecZeroAction = "EXEC0";
     this.CompLitAction = "COMPLIT";
 };
 
 var GlobalSimpleProps = function (cfb) {
     "use strict";
-
+    
     if (!(this instanceof GlobalSimpleProps)) {
         throw new Error("GlobalSimpleProps needs to be called with the new keyword");
-    } 
+    }
     this.CreoleForthBundle = cfb;
     this.DataStack = [];
     this.ReturnStack = [];
@@ -93,7 +93,7 @@ GlobalSimpleProps.method("cleanFields", function () {
     this.OutputArea = "";
 });
 
-GlobalSimpleProps.method('cfPop', function(arr) {
+GlobalSimpleProps.method('cfPop', function (arr) {
     
     console.log(arr.length);
     if ((arr.length === 1) && (arr[0] === "")) {
@@ -271,7 +271,17 @@ var Interpreter = function () {
 
 Interpreter.method("doParseInput", function (gsp) {
     // splits the input into individual words
-    gsp.ParsedInput = gsp.InputArea.split(/\s+/);
+    var lines = gsp.InputArea.split(/\n/);
+    var i;
+    
+    for (i = 0; i < lines.length; i++)
+    {
+        lines[i] += " __#EOL#__";
+    }
+    
+    var codeLine = lines.join(" ");
+    console.log(codeLine);
+    gsp.ParsedInput = codeLine.trim().split(/\s+/);
 });
 
 Interpreter.method("doInner", function (gsp) {
@@ -364,8 +374,19 @@ Compiler.method("CompileInParamField", function (gsp) {
 
 // Executes at time zero of colon compilation, when CompileInfo triplets are placed in the PAD area.
 // Example : comment handling. The pointer is moved past the comments. 
-Compiler.method("DoExecute0", function (gsp) {
-      
+
+Compiler.method("doSingleLineCmts", function (gsp) {
+    /*
+    while (gsp.ParsedInput[gsp.OuterPtr] != "__#EOL#__") {
+        gsp.OuterPtr += 1;
+    }
+    */
+});
+
+Compiler.method("doParenCmts", function (gsp) {
+    while (gsp.ParsedInput[gsp.OuterPtr].search(/\)/) === -1) {
+        gsp.OuterPtr += 1;
+    }
 });
 
 // Executes at time one of colon compilation, then the information in the CompileInfo triplets are
@@ -393,8 +414,9 @@ Compiler.method("CompileColon", function (gsp) {
     var compInfo;
     var isSemiPresent = false;
     var colonIndex = -1;
-    var i;
     var gspComp = new GlobalSimpleProps(gsp.CreoleForthBundle);
+    var i;
+    var codeField; 
     
     // Elementary syntax check to avoid allowing the page to hang. If A colon isn't followed by a matching semicolon, you get an error message
     // and the stacks and input are cleared.
@@ -438,8 +460,10 @@ Compiler.method("CompileColon", function (gsp) {
                     gsp.PADarea.push(compInfo);  
                 }
                 else {
-                    // To be implemented - this is stuff where the outer ptr is manipulated such as comments
-                    alert("To be implemented");
+                    // This is stuff where the outer ptr is manipulated such as comments
+                    console.log(fqWord + " : " + compAction);
+                    codeField = gsp.CreoleForthBundle[fqWord].CodeField;
+                    codeField(gsp);
                 }
                 isFound = true;
                 break;
@@ -448,6 +472,7 @@ Compiler.method("CompileColon", function (gsp) {
                 searchVocabPtr -= 1;
             }
         }
+    
         // if no dictionary entry is found, it's tagged as a literal.
         if (isFound === false) {
             compInfo = new CompileInfo(fqWord, gsp.CreoleForthBundle[fqWord].IndexField, gsp.BFC.CompLitAction);
@@ -817,6 +842,11 @@ cfb1.BuildPrimitive("0BRANCH", cfb1.Modules.Compiler.do0Branch, "IMMEDIATE", "NO
 cfb1.BuildPrimitive("JUMP", cfb1.Modules.Compiler.doJump, "IMMEDIATE", "NOP","( -- ) Jumps unconditionally to the parameter field location next to it and is compiled by ELSE");
 cfb1.BuildPrimitive("doElse", cfb1.Modules.CorePrims.doNOP, "IMMEDIATE", "NOP","( -- ) Run-time code for ELSE");
 cfb1.BuildPrimitive("doThen", cfb1.Modules.CorePrims.doNOP, "IMMEDIATE", "NOP","( -- ) Run-time code for THEN");
+
+cfb1.BuildPrimitive("\\", cfb1.Modules.Compiler.doSingleLineCmts, "FORTH", "EXEC0","( -- ) Single-line comment handling");
+cfb1.BuildPrimitive("__#EOL#__", cfb1.Modules.CorePrims.doNOP, "FORTH", "NOP","( -- ) EOL marker");
+cfb1.BuildPrimitive("(", cfb1.Modules.Compiler.doParenCmts, "FORTH", "EXEC0","( -- ) Multiline comment handling");
+
 
 /*
 // For testing only
