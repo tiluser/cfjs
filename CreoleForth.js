@@ -6,13 +6,11 @@ Function.prototype.method = function (name, func) {
 };
 
 // Might not be safe to use
-/*
 var originalPop = Array.prototype.pop;
+/*
 Array.prototype.pop = function() {
     console.log(this.length);
     var popVal = originalPop.apply(this, arguments);
-    //console.log(this.length);
-    // console.log(popVal);
     
     if ((this.length === 0) && (popVal === "")) {
         alert("Error: Stack underflow");
@@ -93,10 +91,27 @@ GlobalSimpleProps.method("cleanFields", function () {
     this.OutputArea = "";
 });
 
+
+GlobalSimpleProps.method('hasMinArgs', function (stack, minSize) {
+    if (stack.length < minSize) {
+        alert("Error: Stack underflow");
+        this.cleanFields();
+        this.DataStack = [];
+        throw new Error("Insufficient number of stack arguments");
+        return false;
+    } 
+    else {
+        return true;
+    }
+});
+
+
 GlobalSimpleProps.method('cfPop', function (arr) {
     
     console.log(arr.length);
-    if ((arr.length === 1) && (arr[0] === "")) {
+    originalPop.apply(this, arguments);
+    var popVal = arr.pop();
+    if ((arr.length === 0) && (popVal === "")) {
         this.cleanFields();
         alert("Error: Stack underflow");
         throw new Error("Insufficient number of stack arguments");       
@@ -140,10 +155,13 @@ var CorePrims = function () {
 CorePrims.method("doNOP", function (gsp) {
         // Does exactly nothing
      //   alert("I do nothing");
-    gsp.Scratch = null;
+    console.log("NOP does nothing")
 });
 
 CorePrims.method("doPlus", function (gsp) {
+    if (gsp.hasMinArgs(gsp.DataStack, 2) === false) { 
+        return;
+    }
     var val2 = gsp.DataStack.pop();
     var val1 = gsp.DataStack.pop();
     var sum = Number(val1) + Number(val2);
@@ -235,7 +253,7 @@ CorePrims.method("doOver", function (gsp) {
 });
 
 CorePrims.method("doDrop", function (gsp) {
-    gsp.cfPop(gsp.DataStack);
+    gsp.DataStack.pop();
     // gsp.DataStack.pop();
 });
 
@@ -276,13 +294,13 @@ Interpreter.method("doParseInput", function (gsp) {
     
     for (i = 0; i < lines.length; i++)
     {
-        lines[i] += " __#EOL#__";
+        lines[i] += "  __#EOL#__";
     }
     
     var codeLine = lines.join(" ");
     console.log(codeLine);
     gsp.ParsedInput = codeLine.trim().split(/\s+/);
-    gsp.InputArea = "";
+    console.log(gsp.ParsedInput);
 });
 
 Interpreter.method("doInner", function (gsp) {
@@ -353,10 +371,9 @@ Interpreter.method("doOuter", function (gsp) {
         if (isFound === false) {
             gsp.DataStack.push(rawWord);
         }
-        gsp.OuterPtr += 1;     
+        gsp.OuterPtr += 1;   
+        isFound = false;
     }  
-    gsp.InputArea = "";
-    gsp.ParsedInput = [];
 });
 
 var Compiler = function () {
@@ -378,12 +395,10 @@ Compiler.method("CompileInParamField", function (gsp) {
 // Executes at time zero of colon compilation, when CompileInfo triplets are placed in the PAD area.
 // Example : comment handling. The pointer is moved past the comments. 
 
-Compiler.method("doSingleLineCmts", function (gsp) {
-    /*
+Compiler.method("doSingleLineCmts", function (gsp) { 
     while (gsp.ParsedInput[gsp.OuterPtr] != "__#EOL#__") {
         gsp.OuterPtr += 1;
-    }
-    */
+    }  
 });
 
 Compiler.method("doParenCmts", function (gsp) {
@@ -807,7 +822,6 @@ gsp.DataStack = [];
 gsp.VocabStack.push("ONLY");
 gsp.VocabStack.push("FORTH");
 gsp.VocabStack.push("APPSPEC");
-gsp.VocabStack.push("IMMEDIATE");
 gsp.CurrentVocab = "FORTH";
 
 // BuildPrimitive(objFbps As ForthBundleParamSet, psName As String, psClassModule As String, psCodeField As String, psVocab As String, psCompileAction As String, psHelp As String)
