@@ -1,0 +1,17 @@
+\ Forth Definitions to plug in for testing purposes
+
+\ Puts DUP, ROT, and HELLO together 
+: DRH ( n1 n2 -- n2 n2 n1 )
+    DUP ROT HELLO ;
+
+\ Tests the BEGIN-UNTIL indefinite loop
+: TESTBU ( n --)
+    BEGIN 
+        1 +
+        DUP 10 >
+    UNTIL ;
+    
+: TESTBU BEGIN 1 + DUP 10 > UNTIL ;
+
+
+1 TESTBU
