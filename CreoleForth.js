@@ -1,44 +1,9 @@
-// Set this global variable to DEVELOPMENT in your web page to get the stack
-// underflow checking to work correctly. It comes at the expense of overriding
-// the Array.prototype.pop() method, so you can remove it when you're sure there
-// are no stack-based errors and you may have to interact with other libraries. 
-
-if (creoleForthCodeBase === undefined) {
-    var creoleodeBase = "PRODUCTION";
-}
-
 Function.prototype.method = function (name, func) {
     if (!this.prototype[name]) {
         this.prototype[name] = func;
         return this;
     }
 };
-
-
-var originalPop = Array.prototype.pop;
-var GlobalErrors = function () {
-    "use strict";
-
-    if (!(this instanceof BasicForthConstants)) {
-        throw new Error("BasicForthConstants needs to be called with the new keyword");
-    }
-
-    this.StackUnderFlowFlag = false;  
-};
-
-var globalErrors = Object.create(GlobalErrors);
-if (creoleForthCodeBase === "DEVELOPMENT") {
-    Array.prototype.pop = function() {
-        var popVal = originalPop.apply(this, arguments);
-        if ((this.length === 0) && (popVal === "")) {
-            globalErrors.StackUnderFlowFlag = true;
-            alert("Error: Stack underflow");
-        }
-        else {
-            return popVal;
-        }
-    };
-}
 
 Number.method('integer', function () {
     return Math[this < 0 ? 'ceil' : 'floor'](this);
@@ -47,6 +12,7 @@ Number.method('integer', function () {
 String.method('trim', function () {
     return this.replace(/^\s+|\s$/g, '');
 });
+
 
 var BasicForthConstants = function () {
     "use strict";
@@ -111,12 +77,20 @@ GlobalSimpleProps.method("cleanFields", function () {
 });
 
 
-GlobalSimpleProps.method('hasMinArgs', function (stack, minSize) {  
-    
-    if (minSize === 1) {
-      //  minSize += 1;
+GlobalSimpleProps.method('hasMinArgs', function (stack, minSize) { 
+    var i;
+    for (i = stack.length - 1; i >= 0; i--) {
+      //  console.log("Stack val" + i + " is " + stack[i]);
+        if (stack[i] == "" ||  stack.length < minSize) {
+            alert("Error: Stack underflow");
+            this.cleanFields();
+            return false;
+        }
     }
-    if (stack.length < minSize) {
+    
+    return true;
+    /*
+    if (stack[0] === "" || stack.length < minSize) {
         alert("Error: Stack underflow");
         this.cleanFields();
         //throw new Error("Insufficient number of stack arguments");
@@ -125,6 +99,7 @@ GlobalSimpleProps.method('hasMinArgs', function (stack, minSize) {
     else {
         return true;
     }
+    */
 });
 
 GlobalSimpleProps.method('cfPop', function (arr) {
@@ -184,7 +159,6 @@ CorePrims.method("doPlus", function (gsp) {
     if (gsp.hasMinArgs(gsp.DataStack, 2) === false) { 
         return;
     }    
-
     var val2 = gsp.DataStack.pop();
     var val1 = gsp.DataStack.pop();
     var sum = Number(val1) + Number(val2);
@@ -252,6 +226,10 @@ CorePrims.method("doSwap", function (gsp) {
 
 // ( n1 n2 n3 -- n2 n3 n1 ) Rotates the third value to the top of the stack
 CorePrims.method("doRot", function (gsp) {
+    if (gsp.hasMinArgs(gsp.DataStack, 3) === false) { 
+        return;
+    }
+
     var val3 = gsp.DataStack.pop();
     var val2 = gsp.DataStack.pop();
     var val1 = gsp.DataStack.pop();
@@ -263,16 +241,14 @@ CorePrims.method("doRot", function (gsp) {
 
 // ( n1 n2 n3 -- n3 n1 n2 )  Rotates top value of the stack to the third position 
 CorePrims.method("doMinusRot", function (gsp) {
+    if (gsp.hasMinArgs(gsp.DataStack, 3) === false) { 
+        return;
+    }
+
     var val3 = gsp.DataStack.pop();
     var val2 = gsp.DataStack.pop();
     var val1 = gsp.DataStack.pop(); 
- 
-    if (globalErrors.StackUnderFlowFlag === true) {
-        gsp.cleanFields();
-        globalErrors.StackUnderFlowFlag = false;
-        return;
-    }
- 
+  
     gsp.DataStack.push(val3);    
     gsp.DataStack.push(val1);
     gsp.DataStack.push(val2);
@@ -280,7 +256,7 @@ CorePrims.method("doMinusRot", function (gsp) {
 });
 
 CorePrims.method("doNip", function (gsp) {
-    if (gsp.hasMinArgs(gsp.DataStack, 1) === false) { 
+    if (gsp.hasMinArgs(gsp.DataStack, 2) === false) { 
         return;
     }
     var val1 = gsp.DataStack.pop();
@@ -435,10 +411,6 @@ Interpreter.method("doParseInput", function (gsp) {
 
 Interpreter.method("doInner", function (gsp) {
     gsp.CreoleForthBundle.Address[gsp.InnerPtr].CodeField(gsp);
-    if (globalErrors.StackUnderFlowFlag === true) {
-        gsp.cleanFields();
-        globalErrors.StackUnderFlowFlag = false;     
-    } 
 });
 
 Interpreter.method("doColon", function(gsp) {

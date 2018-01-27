@@ -4,6 +4,8 @@
 : DRH ( n1 n2 -- n2 n2 n1 )
     DUP ROT HELLO ;
 
+: TESTBU BEGIN 1 + DUP 10 > UNTIL ;
+
 \ Tests the BEGIN-UNTIL indefinite loop
 : TESTBU ( n --)
     BEGIN 
