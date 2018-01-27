@@ -10,8 +10,16 @@
         1 +
         DUP 10 >
     UNTIL ;
-    
-: TESTBU BEGIN 1 + DUP 10 > UNTIL ;
 
-
+\ Will loop until 11 is on the stack
 1 TESTBU
+
+\ Defining word example
+10 CONSTANT TEN
+
+\ List compiler with message box
+{ a b c } MSGBOX
+
+\ A test of EVAL primitive
+{ alert("Eval is evil"); } EVAL
+
