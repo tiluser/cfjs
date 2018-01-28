@@ -53,7 +53,7 @@ var GlobalSimpleProps = function (cfb) {
     this.HelpCommentField = "";
     this.CompiledList = [];
     this.BFC = new BasicForthConstants();
-    this.minSize = 2;
+    this.ColonFirstDefined = false;
 };
 
 GlobalSimpleProps.method("cleanFields", function () {
@@ -294,10 +294,11 @@ CorePrims.method("doVList", function (gsp) {
     var definitionTable = [];
     var i;
     var cw;
+    var dtString;
     
-    definitionTable[0] = "<table>";
+    definitionTable[0] = gsp.CreoleForthBundle.row + 1 + " definitions<br><table>";
     definitionTable.push("<th>Index</th><th>Name</th><th>Vocabulary</th><th>Help Field</th>");
-    for (i = 0; i < gsp.CreoleForthBundle.row; i++) {
+    for (i = 0; i <= gsp.CreoleForthBundle.row; i++) {
         cw = gsp.CreoleForthBundle.Address[i];
         if (cw != null) {
             definitionTable.push("<tr>" + 
@@ -311,7 +312,6 @@ CorePrims.method("doVList", function (gsp) {
     definitionTable.push("</table>");  
     dtString = definitionTable.join("\n");
     gsp.HelpCommentField = dtString;
-    // alert(dtString);
 });
 
 CorePrims.method("doToday", function (gsp) { 
@@ -546,7 +546,7 @@ Compiler.method("doCreate", function (gsp) {
 
 
 Compiler.method("CompileColon", function (gsp) {
-    var hereLoc = gsp.CreoleForthBundle.row + 1;
+    var hereLoc = gsp.CreoleForthBundle.row + 1 ;
     var name = gsp.ParsedInput[gsp.OuterPtr + 1];
     var params = [];
     var data = [];
@@ -1129,11 +1129,11 @@ CreoleForthBundle.method("BuildHighLevel", function(gsp, code, help) {
     var newDef;
     
     gsp.InputArea = code;
-    this.Modules.Interpreter.doParseInput(gsp);
+    this.Modules.Interpreter.doParseInput(gsp);   
     this.Modules.Interpreter.doOuter(gsp);
     newDef = this.Address[this.row];
     newDef.HelpField = help;
-    this[newDef.fqNameField] = newDef;    
+    this[newDef.fqNameField] = newDef; 
 });
 
 
@@ -1246,10 +1246,10 @@ cfb1.BuildPrimitive("doLoop", cfb1.Modules.Compiler.doLoop, "IMMEDIATE", "COMPIN
 cfb1.BuildPrimitive("\\", cfb1.Modules.Compiler.doSingleLineCmts, "FORTH", gsp.BFC.ExecZeroAction,"( -- ) Single-line comment handling");
 cfb1.BuildPrimitive("(", cfb1.Modules.Compiler.doParenCmts, "FORTH", gsp.BFC.ExecZeroAction,"( -- ) Multiline comment handling");
 cfb1.BuildPrimitive("\{", cfb1.Modules.Compiler.doCompileList, "FORTH", gsp.BFC.ExecZeroAction,"( -- list ) List compiler");
+cfb1.BuildPrimitive("TEST", cfb1.Modules.AppSpec.doTest, "APPSPEC", "COMPINPF","( -- ) Do what you like here");
+
 cfb1.BuildHighLevel(gsp, ": CONSTANT CREATE , DOES> @ ;", "( val -- ) CONSTANT <name>. Defining word for scalar constants");
 cfb1.BuildHighLevel(gsp, ": VARIABLE CREATE 0 , ;", "VARIABLE <name>. Used for simple scalar data storage and retrieval");
-
 // APPSPEC is a convenient vocabulary to group your application specific primitives in
-cfb1.BuildPrimitive("TEST", cfb1.Modules.AppSpec.doTest, "APPSPEC", "COMPINPF","( -- ) Do what you like here");
 gsp.CurrentVocab = "APPSPEC";
 cfb1.BuildHighLevel(gsp, ": DOTEST DO TULIP LOOP ;", "Simple testing definition");
