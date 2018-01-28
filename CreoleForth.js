@@ -13,7 +13,6 @@ String.method('trim', function () {
     return this.replace(/^\s+|\s$/g, '');
 });
 
-
 var BasicForthConstants = function () {
     "use strict";
 
@@ -22,11 +21,8 @@ var BasicForthConstants = function () {
     }
     this.SmudgeFlag = "SMUDGED";
     this.ImmediateVocab = "IMMEDIATE";
-    this.BranchloopVocab = "BRANCHLOOP";
     this.PrefilterVocab = "PREFILTER";
     this.PostfilterVocab = "POSTFILTER";
-    this.EndOfSingleLineComment = "\n";
-    this.EndOfMultilineComment = ")";
     this.ExecZeroAction = "EXEC0";
     this.CompLitAction = "COMPLIT";
 };
@@ -57,6 +53,7 @@ var GlobalSimpleProps = function (cfb) {
     this.HelpCommentField = "";
     this.CompiledList = [];
     this.BFC = new BasicForthConstants();
+    this.minSize = 2;
 };
 
 GlobalSimpleProps.method("cleanFields", function () {
@@ -79,42 +76,15 @@ GlobalSimpleProps.method("cleanFields", function () {
 
 GlobalSimpleProps.method('hasMinArgs', function (stack, minSize) { 
     var i;
+
     for (i = stack.length - 1; i >= 0; i--) {
-      //  console.log("Stack val" + i + " is " + stack[i]);
-        if (stack[i] == "" ||  stack.length < minSize) {
+        if (stack[i] == "" || stack.length < minSize) {
             alert("Error: Stack underflow");
             this.cleanFields();
             return false;
         }
-    }
-    
+    }   
     return true;
-    /*
-    if (stack[0] === "" || stack.length < minSize) {
-        alert("Error: Stack underflow");
-        this.cleanFields();
-        //throw new Error("Insufficient number of stack arguments");
-        return false;
-    } 
-    else {
-        return true;
-    }
-    */
-});
-
-GlobalSimpleProps.method('cfPop', function (arr) {
-    
-    originalPop.apply(this, arguments);
-    var popVal = arr[0];
-    if ((arr.length === 1) && (popVal === "")) {
-        this.cleanFields();
-        alert("Error: Stack underflow");
-        // throw new Error("Insufficient number of stack arguments");       
-    }
-    else { 
-        return arr.pop();
-    }
-    
 });
 
 // These objects are to be stored on the return stack
@@ -211,7 +181,7 @@ CorePrims.method("doDup", function (gsp) {
     }
     var val = gsp.DataStack.pop();
     gsp.DataStack.push(val);
-    gsp.DataStack.push(val);    
+    gsp.DataStack.push(val); 
 });
 
 CorePrims.method("doSwap", function (gsp) {
@@ -474,10 +444,16 @@ Interpreter.method("doOuter", function (gsp) {
                 searchVocabPtr -= 1;
             }
         }
+        // Have to assign stack parameters this way to account for the way JavaScript initializes arrays
         if (isFound === false) {
-            gsp.DataStack.push(rawWord);
+            if (gsp.DataStack.length === 1 && gsp.DataStack[0] == "") {
+                gsp.DataStack[0] = rawWord;
+            }
+            else {
+                gsp.DataStack.push(rawWord);
+            }
         }
-        gsp.OuterPtr += 1;   
+        gsp.OuterPtr += 1;  
         isFound = false;
     }  
 });
@@ -527,7 +503,6 @@ Compiler.method("doCompileList", function (gsp) {
     }
     
     joinedList = gsp.CompiledList.join(" ");
-    console.log(joinedList)
     gsp.DataStack.push(joinedList);
 });
 
@@ -806,7 +781,7 @@ Compiler.method("doStartDo", function (gsp) {
     var startIndex = gsp.DataStack.pop();
     var loopEnd = gsp.DataStack.pop();
     gsp.LoopIndex.push(startIndex);
-    gsp.LoopEnd.push(loopEnd);
+    gsp.LoopEnd.push(loopEnd - 1);
 });
 
 Compiler.method("doLoop", function (gsp) {
@@ -818,7 +793,6 @@ Compiler.method("doLoop", function (gsp) {
     var loopEnd = gsp.LoopEnd.pop();
     
     if (Number(currIndex) == Number(loopEnd)) {
-        console.log("currIndex: " + currIndex + ", loopEnd:" + loopEnd);
         gsp.ParamFieldPtr += 1;  
         rLoc.ParamFieldAddr = gsp.ParamFieldPtr;
     }
@@ -829,7 +803,6 @@ Compiler.method("doLoop", function (gsp) {
         gsp.LoopEnd.push(loopEnd);
         rLoc.ParamFieldAddr = gsp.ParamFieldPtr;
     }
-    console.log(gsp.LoopIndex);
     gsp.ReturnStack.push(rLoc);    
 });
 
@@ -1270,10 +1243,9 @@ cfb1.BuildPrimitive("doStartDo", cfb1.Modules.Compiler.doStartDo, "IMMEDIATE", "
 cfb1.BuildPrimitive("doDo", cfb1.Modules.CorePrims.doNOP, "IMMEDIATE", "COMPINPF","( -- ) Marker for DoLoop to return to");
 cfb1.BuildPrimitive("doLoop", cfb1.Modules.Compiler.doLoop, "IMMEDIATE", "COMPINPF","( -- ) Loops back to doDo until the start equals the end");
 
-
-cfb1.BuildPrimitive("\\", cfb1.Modules.Compiler.doSingleLineCmts, "FORTH", "EXEC0","( -- ) Single-line comment handling");
-cfb1.BuildPrimitive("(", cfb1.Modules.Compiler.doParenCmts, "FORTH", "EXEC0","( -- ) Multiline comment handling");
-cfb1.BuildPrimitive("\{", cfb1.Modules.Compiler.doCompileList, "FORTH", "EXEC0","( -- list ) List compiler");
+cfb1.BuildPrimitive("\\", cfb1.Modules.Compiler.doSingleLineCmts, "FORTH", gsp.BFC.ExecZeroAction,"( -- ) Single-line comment handling");
+cfb1.BuildPrimitive("(", cfb1.Modules.Compiler.doParenCmts, "FORTH", gsp.BFC.ExecZeroAction,"( -- ) Multiline comment handling");
+cfb1.BuildPrimitive("\{", cfb1.Modules.Compiler.doCompileList, "FORTH", gsp.BFC.ExecZeroAction,"( -- list ) List compiler");
 cfb1.BuildHighLevel(gsp, ": CONSTANT CREATE , DOES> @ ;", "( val -- ) CONSTANT <name>. Defining word for scalar constants");
 cfb1.BuildHighLevel(gsp, ": VARIABLE CREATE 0 , ;", "VARIABLE <name>. Used for simple scalar data storage and retrieval");
 
