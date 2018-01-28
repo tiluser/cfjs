@@ -775,6 +775,64 @@ Compiler.method("CompileUntil", function (gsp) {
     newCreoleWord.ParamField.push(beginLoc);   
 });
 
+Compiler.method("CompileDo", function (gsp) {
+    var newRow = gsp.CreoleForthBundle.row;
+    var newCreoleWord = gsp.CreoleForthBundle.Address[newRow];
+    var doStartDoAddr = gsp.CreoleForthBundle["doStartDo.IMMEDIATE"].IndexField;
+    var doAddr = gsp.CreoleForthBundle["doDo.IMMEDIATE"].IndexField;
+    var doLoc;
+    newCreoleWord.ParamField.push(doStartDoAddr);
+    newCreoleWord.ParamField.push(doAddr);
+    doLoc = newCreoleWord.ParamField.length - 1;
+    gsp.DataStack.push(doLoc);
+});
+
+Compiler.method("CompileLoop", function (gsp) {
+    if (gsp.hasMinArgs(gsp.DataStack, 1) === false) { 
+        return;
+    }       
+    var newRow = gsp.CreoleForthBundle.row;
+    var newCreoleWord = gsp.CreoleForthBundle.Address[newRow];
+    var loopAddr = gsp.CreoleForthBundle["doLoop.IMMEDIATE"].IndexField;
+    var doLoc = gsp.DataStack.pop();
+    newCreoleWord.ParamField.push(loopAddr);
+    newCreoleWord.ParamField.push(doLoc);
+});
+
+Compiler.method("doStartDo", function (gsp) {
+    if (gsp.hasMinArgs(gsp.DataStack, 2) === false) { 
+        return;
+    } 
+    var startIndex = gsp.DataStack.pop();
+    var loopEnd = gsp.DataStack.pop();
+    gsp.LoopIndex.push(startIndex);
+    gsp.LoopEnd.push(loopEnd);
+});
+
+Compiler.method("doLoop", function (gsp) {
+    var currWord = gsp.CreoleForthBundle.Address[gsp.InnerPtr];
+    var paramField = currWord.ParamField;
+    var rLoc = gsp.ReturnStack.pop();
+    var jumpAddr = paramField[rLoc.ParamFieldAddr];
+    var currIndex = gsp.LoopIndex.pop();
+    var loopEnd = gsp.LoopEnd.pop();
+    
+    if (Number(currIndex) == Number(loopEnd)) {
+        console.log("currIndex: " + currIndex + ", loopEnd:" + loopEnd);
+        gsp.ParamFieldPtr += 1;  
+        rLoc.ParamFieldAddr = gsp.ParamFieldPtr;
+    }
+    else {
+        gsp.ParamFieldPtr = jumpAddr;
+        currIndex = Number(currIndex) + 1;
+        gsp.LoopIndex.push(currIndex);
+        gsp.LoopEnd.push(loopEnd);
+        rLoc.ParamFieldAddr = gsp.ParamFieldPtr;
+    }
+    console.log(gsp.LoopIndex);
+    gsp.ReturnStack.push(rLoc);    
+});
+
 Compiler.method("doDoes", function (gsp) {
     var execToken = gsp.CreoleForthBundle.Address[gsp.InnerPtr].IndexField;
     gsp.ParamFieldPtr += 1;
@@ -795,7 +853,6 @@ Compiler.method("CompileDoes", function (gsp) {
     var childCreoleWord = gsp.CreoleForthBundle.Address[newRow];
     var doesAddr = gsp.CreoleForthBundle["DOES>.FORTH"].IndexField;
     var i = 0;
-    var fqNameField = childCreoleWord.fqNameField;
     var startCopyPoint;
     
     childCreoleWord.CodeField = gsp.CreoleForthBundle.Modules.Compiler.doDoes;
@@ -1180,9 +1237,9 @@ cfb1.BuildPrimitive("OR", cfb1.Modules.LogicOps.doOr, "FORTH", "COMPINPF","( val
 cfb1.BuildPrimitive("XOR", cfb1.Modules.LogicOps.doXor, "FORTH", "COMPINPF","( val1 val2 -- flag ) -1 if one and only one argument is non-zero, 0 otherwise");
 
 // Compiler definitions
-cfb1.BuildPrimitive(",", cfb1.Modules.Compiler.doComma, "FORTH", "COMPINPF","( n --). Compiles value off the TOS into the next parameter field cell");
-cfb1.BuildPrimitive("COMPINPF", cfb1.Modules.Compiler.doComma, "IMMEDIATE", "COMPINPF","( n --). It's does the same thing as , (comma) - given a different name for ease of reading");
-cfb1.BuildPrimitive("EXECUTE", cfb1.Modules.Compiler.doExecute, "FORTH", "COMPINPF","( address --). Executes the word corresponding to the address on the stack");
+cfb1.BuildPrimitive(",", cfb1.Modules.Compiler.doComma, "FORTH", "COMPINPF","( n --) Compiles value off the TOS into the next parameter field cell");
+cfb1.BuildPrimitive("COMPINPF", cfb1.Modules.Compiler.doComma, "IMMEDIATE", "COMPINPF","( n --) Does the same thing as , (comma) - given a different name for ease of reading");
+cfb1.BuildPrimitive("EXECUTE", cfb1.Modules.Compiler.doExecute, "FORTH", "COMPINPF","( address --) Executes the word corresponding to the address on the stack");
 cfb1.BuildPrimitive(":", cfb1.Modules.Compiler.CompileColon, "FORTH", "COMPINPF","( -- ) Starts compilation of a colon definition");
 cfb1.BuildPrimitive(";", cfb1.Modules.Compiler.doSemi, "IMMEDIATE", "EXECUTE","( -- ) Terminates compilation of a colon definition");
 cfb1.BuildPrimitive("COMPLIT", cfb1.Modules.Compiler.CompileLiteral, "IMMEDIATE", "EXECUTE","( -- ) Compiles doLit and a literal into the dictionary");
@@ -1197,16 +1254,22 @@ cfb1.BuildPrimitive("DEFINITIONS", cfb1.Modules.Compiler.doSetCurrentToContext, 
                     "COMPINPF","(  -- ). Sets the current (compilation) vocabulary to the context vocabulary (the one on top of the vocabulary stack)");
 
 // Branching compiler definitions
-cfb1.BuildPrimitive("IF", cfb1.Modules.Compiler.CompileIf, "IMMEDIATE", "EXECUTE","( -- location ). Compile-time code for IF which should not be used outside of a colon definition");
-cfb1.BuildPrimitive("ELSE", cfb1.Modules.Compiler.CompileElse, "IMMEDIATE", "EXECUTE","( -- location ) Compile-time code for ELSE which should not be used outside of a colon definition");
-cfb1.BuildPrimitive("THEN", cfb1.Modules.Compiler.CompileThen, "IMMEDIATE", "EXECUTE","( -- location ) Compile-time code for THEN which should not be used outside of a colon definition");
+cfb1.BuildPrimitive("IF", cfb1.Modules.Compiler.CompileIf, "IMMEDIATE", "EXECUTE","( -- location ) Compile-time code for IF");
+cfb1.BuildPrimitive("ELSE", cfb1.Modules.Compiler.CompileElse, "IMMEDIATE", "EXECUTE","( -- location ) Compile-time code for ELSE");
+cfb1.BuildPrimitive("THEN", cfb1.Modules.Compiler.CompileThen, "IMMEDIATE", "EXECUTE","( -- location ) Compile-time code for THEN");
 cfb1.BuildPrimitive("0BRANCH", cfb1.Modules.Compiler.do0Branch, "IMMEDIATE", "NOP","( flag -- ) Run-time code for IF");
 cfb1.BuildPrimitive("JUMP", cfb1.Modules.Compiler.doJump, "IMMEDIATE", "NOP","( -- ) Jumps unconditionally to the parameter field location next to it and is compiled by ELSE");
 cfb1.BuildPrimitive("doElse", cfb1.Modules.CorePrims.doNOP, "IMMEDIATE", "NOP","( -- ) Run-time code for ELSE");
 cfb1.BuildPrimitive("doThen", cfb1.Modules.CorePrims.doNOP, "IMMEDIATE", "NOP","( -- ) Run-time code for THEN");
-cfb1.BuildPrimitive("BEGIN", cfb1.Modules.Compiler.CompileBegin, "IMMEDIATE", "EXECUTE","( -- beginLoc ). Compile-time code for BEGIN which should not be used outside of a colon definition");
-cfb1.BuildPrimitive("UNTIL", cfb1.Modules.Compiler.CompileUntil, "IMMEDIATE", "EXECUTE","( beginLoc -- ) Compile-time code for UNTIL which should not be used outside of a colon definition");
+cfb1.BuildPrimitive("BEGIN", cfb1.Modules.Compiler.CompileBegin, "IMMEDIATE", "EXECUTE","( -- beginLoc ) Compile-time code for BEGIN");
+cfb1.BuildPrimitive("UNTIL", cfb1.Modules.Compiler.CompileUntil, "IMMEDIATE", "EXECUTE","( beginLoc -- ) Compile-time code for UNTIL");
 cfb1.BuildPrimitive("doBegin", cfb1.Modules.CorePrims.doNOP, "IMMEDIATE", "NOP","( -- ) Run-time code for BEGIN");
+cfb1.BuildPrimitive("DO", cfb1.Modules.Compiler.CompileDo, "IMMEDIATE", "EXECUTE","( -- beginLoc ) Compile-time code for DO");
+cfb1.BuildPrimitive("LOOP", cfb1.Modules.Compiler.CompileLoop, "IMMEDIATE", "EXECUTE","( -- beginLoc ) Compile-time code for LOOP");
+cfb1.BuildPrimitive("doStartDo", cfb1.Modules.Compiler.doStartDo, "IMMEDIATE", "COMPINPF","( start end -- ) Starts off the Do by getting the start and end");
+cfb1.BuildPrimitive("doDo", cfb1.Modules.CorePrims.doNOP, "IMMEDIATE", "COMPINPF","( -- ) Marker for DoLoop to return to");
+cfb1.BuildPrimitive("doLoop", cfb1.Modules.Compiler.doLoop, "IMMEDIATE", "COMPINPF","( -- ) Loops back to doDo until the start equals the end");
+
 
 cfb1.BuildPrimitive("\\", cfb1.Modules.Compiler.doSingleLineCmts, "FORTH", "EXEC0","( -- ) Single-line comment handling");
 cfb1.BuildPrimitive("(", cfb1.Modules.Compiler.doParenCmts, "FORTH", "EXEC0","( -- ) Multiline comment handling");
@@ -1217,4 +1280,4 @@ cfb1.BuildHighLevel(gsp, ": VARIABLE CREATE 0 , ;", "VARIABLE <name>. Used for s
 // APPSPEC is a convenient vocabulary to group your application specific primitives in
 cfb1.BuildPrimitive("TEST", cfb1.Modules.AppSpec.doTest, "APPSPEC", "COMPINPF","( -- ) Do what you like here");
 gsp.CurrentVocab = "APPSPEC";
-cfb1.BuildHighLevel(gsp, ": HT HELLO TULIP ;", "Simple testing definition");
+cfb1.BuildHighLevel(gsp, ": DOTEST DO TULIP LOOP ;", "Simple testing definition");
