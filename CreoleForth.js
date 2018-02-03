@@ -1,6 +1,7 @@
 Function.prototype.method = function (name, func) {
     if (!this.prototype[name]) {
         this.prototype[name] = func;
+        this.prototype.toString = name;
         return this;
     }
 };
@@ -315,15 +316,17 @@ CorePrims.method("doVList", function (gsp) {
     var dtString;
     
     definitionTable[0] = gsp.CreoleForthBundle.row + 1 + " definitions<br><table>";
-    definitionTable.push("<th>Index</th><th>Name</th><th>Vocabulary</th><th>Help Field</th>");
+    definitionTable.push("<th>Index</th><th>Name</th><th>Vocabulary</th><th>Code Field</th><th>Param Field</th><th>Help Field</th>");
     for (i = 0; i <= gsp.CreoleForthBundle.row; i++) {
         cw = gsp.CreoleForthBundle.Address[i];
         if (cw != null) {
             definitionTable.push("<tr>" + 
-                "<td>" + gsp.CreoleForthBundle.Address[i].IndexField + "</td>" +  
-                "<td>" + gsp.CreoleForthBundle.Address[i].NameField  + "</td>" +
-                "<td>" + gsp.CreoleForthBundle.Address[i].Vocabulary + "</td>" +
-                "<td>" + gsp.CreoleForthBundle.Address[i].HelpField + "</td>" +
+                "<td>" + gsp.CreoleForthBundle.Address[i].IndexField   + "</td>" +  
+                "<td>" + gsp.CreoleForthBundle.Address[i].NameField    + "</td>" +
+                "<td>" + gsp.CreoleForthBundle.Address[i].Vocabulary   + "</td>" +
+                "<td>" + gsp.CreoleForthBundle.Address[i].CodeFieldStr + "</td>" +     
+                "<td>" + gsp.CreoleForthBundle.Address[i].ParamField   + "</td>" +                 
+                "<td>" + gsp.CreoleForthBundle.Address[i].HelpField    + "</td>" +
             "</tr>");
         }
     }
@@ -531,6 +534,7 @@ Compiler.method("doExecute", function (gsp) {
         return;
     }
     var address = gsp.DataStack.pop();
+    gsp.InnerPtr = address;
     gsp.CreoleForthBundle.Address[address].CodeField(gsp);  
 });
 
@@ -551,7 +555,7 @@ Compiler.method("doCreate", function (gsp) {
     var data = [];
     var help = "TODO: ";
     
-    var cw = new CreoleWord(name, gsp.CreoleForthBundle.Modules.Compiler.doMyAddress, gsp.CurrentVocab, "COMPINPF", help, hereLoc - 1, hereLoc, hereLoc - 1, hereLoc, params, data); 
+    var cw = new CreoleWord(name, gsp.CreoleForthBundle.Modules.Compiler.doMyAddress, "Compiler.doMyAddress", gsp.CurrentVocab, "COMPINPF", help, hereLoc - 1, hereLoc, hereLoc - 1, hereLoc, params, data); 
     // The smudge flag avoids accidental recursion. But it's easy enough to get around if you want to. 
     var fqName = name + "." + gsp.CurrentVocab;
     
@@ -596,7 +600,7 @@ Compiler.method("CompileColon", function (gsp) {
     
     // Compilation is started when the IMMEDIATE vocabulary is pushed onto the vocabulary stack. No need for the usual Forth STATE flag.
     gsp.VocabStack.push(gsp.BFC.ImmediateVocab);
-    var cw = new CreoleWord(name, gsp.CreoleForthBundle.Modules.Interpreter.doColon, gsp.CurrentVocab, "COMPINPF", help, hereLoc - 1, hereLoc, hereLoc - 1, hereLoc, params, data); 
+    var cw = new CreoleWord(name, gsp.CreoleForthBundle.Modules.Interpreter.doColon, "Interpreter.doColon", gsp.CurrentVocab, "COMPINPF", help, hereLoc - 1, hereLoc, hereLoc - 1, hereLoc, params, data); 
     // The smudge flag avoids accidental recursion. But it's easy enough to get around if you want to. 
     var fqNameSmudged = name + "." + gsp.CurrentVocab + "." + gsp.BFC.SmudgeFlag;
     var fqName = name + "." + gsp.CurrentVocab;
@@ -889,32 +893,26 @@ Compiler.method("doIndexK", function (gsp) {
 
 // DOES> only works right now outside a compiled definition
 Compiler.method("doDoes", function (gsp) {
-    var execToken = gsp.CreoleForthBundle.Address[gsp.InnerPtr].IndexField;
-    gsp.ParamFieldPtr += 1;
-    gsp.DataStack.push(execToken);
-    gsp.CreoleForthBundle.Modules.Interpreter.doColon(gsp);
-});
-
-/*
-Compiler.method("doDoes", function (gsp) {   
     var currWord = gsp.CreoleForthBundle.Address[gsp.InnerPtr];
+    var codeFieldStr = currWord.CodeFieldStr;
     var execToken;
-    if (currWord.CodeField === cfb1.Modules.Compiler.doDoes) {
-        execToken = paramField[1];
-        gsp.ParamFieldPtr += 2;
+    console.log("Code field is " + currWord.CodeFieldStr);
+    // DOES> has to react differently depending on whether it's inside a colon 
+    // definition or not
+    if (codeFieldStr === "doDoes") {
+        execToken = currWord.IndexField;
+        console.log("Direct execution of doDoes")
+        gsp.ParamFieldPtr = 2;
+        gsp.DataStack.push(execToken);
+        gsp.CreoleForthBundle.Modules.Interpreter.doColon(gsp);
     }
     else {
-        var rLoc = gsp.ReturnStack.pop();   
-        doesWordAddr = rLoc.DictAddr;
-        currParamFieldPtr = rLoc.ParamFieldAddr - 1;
-        execToken = doesWordAddr.paramField[currParamFieldPtr];
-        gsp.ParamFieldPtr =  currParamFieldPtr + 2;
-        gsp.ReturnStack.push(rLoc);
+        execToken = currWord.ParamField[gsp.ParamFieldPtr - 1];
+        console.log(gsp.ParamFieldPtr);
+        console.log("Execution token is " + execToken);
+        gsp.DataStack.push(execToken);
+        gsp.CreoleForthBundle.Modules.Compiler.doExecute(gsp);
     }
- 
-    gsp.MinArgsSwitch = false;
-    gsp.CreoleForthBundle.Modules.Interpreter.doColon(gsp);
-    gsp.MinArgsSwitch = true;
 });
 
 // 1. Copy the code beyond DOES> into the defining word to the new definition
@@ -928,11 +926,13 @@ Compiler.method("CompileDoes", function (gsp) {
     var newRow = gsp.CreoleForthBundle.row;
     var parentCreoleWord = gsp.CreoleForthBundle.Address[parentRow];
     var childCreoleWord = gsp.CreoleForthBundle.Address[newRow];
+    var fqNameField = childCreoleWord.fqNameField;
     var doesAddr = gsp.CreoleForthBundle["DOES>.FORTH"].IndexField;
     var i = 0;
     var startCopyPoint;
     
     childCreoleWord.CodeField = gsp.CreoleForthBundle.Modules.Compiler.doDoes;
+    childCreoleWord.CodeFieldStr = "doDoes";
     // Find the location of the does address in the parent definition
     while (i < parentCreoleWord.ParamField.length) {
         if (parentCreoleWord.ParamField[i] == doesAddr) {
@@ -956,10 +956,9 @@ Compiler.method("CompileDoes", function (gsp) {
     
     rLoc.ParamFieldAddr += i;
     gsp.ReturnStack.push(rLoc);
-  //  gsp.CreoleForthBundle.Address[newRow] = childCreoleWord;
- //   gsp.CreoleForthBundle[fqNameField] = childCreoleWord;
+    gsp.CreoleForthBundle.Address[newRow] = childCreoleWord;
+    gsp.CreoleForthBundle[fqNameField] = childCreoleWord;
 });
-*/
 
 Compiler.method("doJump", function (gsp) {
     var currWord = gsp.CreoleForthBundle.Address[gsp.InnerPtr]; 
@@ -1187,12 +1186,23 @@ var AppSpec = function () {
     this.title = "Application-specific grouping";
 };
 
+var func1 = function () {
+    var description = "ID function test";
+};
+
+var func2 = function () {
+    var description = "ID function test";
+};
+
 AppSpec.method("doTest", function (gsp) {
-    alert("TEST primitive in APPSPEC vocabulary");
+//    alert("TEST primitive in APPSPEC vocabulary");
+    var dc = gsp.CreoleForthBundle.Modules.Compiler.doColon;
+    var dd = gsp.CreoleForthBundle.Modules.Compiler.doDoes;
+    alert(dd === dc);
 });
 
 var CreoleWord =
-    function (NameField, CodeField, Vocabulary, CompileActionField, HelpField,
+    function (NameField, CodeField, CodeFieldStr, Vocabulary, CompileActionField, HelpField,
               PrevRowLocField, RowLocField, LinkField, IndexField, ParamField, DataField) {
         "use strict"
 
@@ -1201,6 +1211,7 @@ var CreoleWord =
         }
         this.NameField = NameField;
         this.CodeField = CodeField;
+        this.CodeFieldStr = CodeFieldStr;
         this.Vocabulary = Vocabulary;
         this.fqNameField = NameField + "." + Vocabulary;
         this.CompileActionField = CompileActionField;
@@ -1232,11 +1243,11 @@ var CreoleForthBundle = function (modules) {
     this.Address = [];
 };
 
-CreoleForthBundle.method("BuildPrimitive", function(name, cf, vocab, compAction, help) {
+CreoleForthBundle.method("BuildPrimitive", function(name, cf, cfs, vocab, compAction, help) {
     var params = [];
     var data = [];
   
-    var cw = new CreoleWord(name, cf, vocab, compAction, help, this.row - 1, this.row, this.row - 1, this.row, params, data);
+    var cw = new CreoleWord(name, cf, cfs, vocab, compAction, help, this.row - 1, this.row, this.row - 1, this.row, params, data);
     var fqName = name + "." + vocab;
     this[fqName] = cw;
     this.Address[this.row] = this[fqName];
@@ -1279,104 +1290,107 @@ var cfb1 = new CreoleForthBundle(modules);
 gsp.CreoleForthBundle = cfb1;
 
 // The onlies
-cfb1.BuildPrimitive("ONLY", cfb1.Modules.Interpreter.doOnly, "ONLY", "EXECUTE","( -- ) Empties the vocabulary stack, then puts ONLY on it");
-cfb1.BuildPrimitive("FORTH", cfb1.Modules.Interpreter.doForth, "ONLY", "EXECUTE","( -- ) Puts FORTH on the vocabulary stack");
-cfb1.BuildPrimitive("APPSPEC", cfb1.Modules.Interpreter.doAppSpec, "ONLY", "EXECUTE","( -- ) Puts APPSPEC on the vocabulary stack");
-cfb1.BuildPrimitive("NOP", cfb1.Modules.CorePrims.doNOP, "ONLY", "COMPINPF","( -- ) Do-nothing primitive which is surprisingly useful");
-cfb1.BuildPrimitive("__#EOL#__", cfb1.Modules.CorePrims.doNOP, "ONLY", "NOP","( -- ) EOL marker");
+cfb1.BuildPrimitive("ONLY", cfb1.Modules.Interpreter.doOnly, "Interpreter.doOnly", "ONLY", "EXECUTE","( -- ) Empties the vocabulary stack, then puts ONLY on it");
+cfb1.BuildPrimitive("FORTH", cfb1.Modules.Interpreter.doForth, "Interpreter.doForth", "ONLY", "EXECUTE","( -- ) Puts FORTH on the vocabulary stack");
+cfb1.BuildPrimitive("APPSPEC", cfb1.Modules.Interpreter.doAppSpec, "Interpreter.doAppSpec", "ONLY", "EXECUTE","( -- ) Puts APPSPEC on the vocabulary stack");
+cfb1.BuildPrimitive("NOP", cfb1.Modules.CorePrims.doNOP, "CorePrims.doNOP", "ONLY", "COMPINPF","( -- ) Do-nothing primitive which is surprisingly useful");
+cfb1.BuildPrimitive("__#EOL#__", cfb1.Modules.CorePrims.doNOP, "CorePrims.doNOP", "ONLY", "NOP","( -- ) EOL marker");
 
 // dialogs and help
-cfb1.BuildPrimitive("HELLO", cfb1.Modules.CorePrims.doHello, "FORTH", "COMPINPF","( -- ) Pops up an alert saying Hello World");
-cfb1.BuildPrimitive("TULIP", cfb1.Modules.CorePrims.doTulip, "FORTH", "COMPINPF","( -- ) Pops up an alert saying Tulip");
-cfb1.BuildPrimitive("MSGBOX", cfb1.Modules.CorePrims.doMsgBox, "FORTH", "COMPINPF","( msg -- ) Pops up an alert saying the message");
-cfb1.BuildPrimitive("EVAL", cfb1.Modules.CorePrims.doEval, "FORTH", "COMPINPF","( code -- ) Evaluates raw JavaScript code - only allows alerts");
-cfb1.BuildPrimitive("VLIST", cfb1.Modules.CorePrims.doVList, "FORTH", "COMPINPF","( -- ) Lists the dictionary definitions");
+cfb1.BuildPrimitive("HELLO", cfb1.Modules.CorePrims.doHello, "CorePrims.doHello", "FORTH", "COMPINPF","( -- ) Pops up an alert saying Hello World");
+cfb1.BuildPrimitive("TULIP", cfb1.Modules.CorePrims.doTulip, "CorePrims.doTulip", "FORTH", "COMPINPF","( -- ) Pops up an alert saying Tulip");
+cfb1.BuildPrimitive("MSGBOX", cfb1.Modules.CorePrims.doMsgBox, "CorePrims.doMsgBox", "FORTH", "COMPINPF","( msg -- ) Pops up an alert saying the message");
+cfb1.BuildPrimitive("EVAL", cfb1.Modules.CorePrims.doEval, "CorePrims.doEval", "FORTH", "COMPINPF","( code -- ) Evaluates raw JavaScript code - only allows alerts");
+cfb1.BuildPrimitive("VLIST", cfb1.Modules.CorePrims.doVList, "CorePrims.doVList", "FORTH", "COMPINPF","( -- ) Lists the dictionary definitions");
 
 // Basic math
-cfb1.BuildPrimitive("+", cfb1.Modules.CorePrims.doPlus, "FORTH", "COMPINPF","( n1 n2 -- sum ) Adds two numbers on the stack");
-cfb1.BuildPrimitive("-", cfb1.Modules.CorePrims.doMinus, "FORTH", "COMPINPF","( n1 n2 -- difference ) Subtracts two numbers on the stack");
-cfb1.BuildPrimitive("*", cfb1.Modules.CorePrims.doMultiply, "FORTH", "COMPINPF","( n1 n2 -- product ) Multiplies two numbers on the stack");
-cfb1.BuildPrimitive("/", cfb1.Modules.CorePrims.doDivide, "FORTH", "COMPINPF","( n1 n2 -- quotient ) Divides two numbers on the stack");
-cfb1.BuildPrimitive("%", cfb1.Modules.CorePrims.doMod, "FORTH", "COMPINPF","( n1 n2 -- remainder ) Returns remainder of division operation");
+cfb1.BuildPrimitive("+", cfb1.Modules.CorePrims.doPlus, "CorePrims.doPlus", "FORTH", "COMPINPF","( n1 n2 -- sum ) Adds two numbers on the stack");
+cfb1.BuildPrimitive("-", cfb1.Modules.CorePrims.doMinus, "CorePrims.doMinus", "FORTH", "COMPINPF","( n1 n2 -- difference ) Subtracts two numbers on the stack");
+cfb1.BuildPrimitive("*", cfb1.Modules.CorePrims.doMultiply, "CorePrims.doMultiply", "FORTH", "COMPINPF","( n1 n2 -- product ) Multiplies two numbers on the stack");
+cfb1.BuildPrimitive("/", cfb1.Modules.CorePrims.doDivide, "CorePrims.doDivide", "FORTH", "COMPINPF","( n1 n2 -- quotient ) Divides two numbers on the stack");
+cfb1.BuildPrimitive("%", cfb1.Modules.CorePrims.doMod, "CorePrims.doMod", "FORTH", "COMPINPF","( n1 n2 -- remainder ) Returns remainder of division operation");
 
 // Date/time handling
-cfb1.BuildPrimitive("TODAY", cfb1.Modules.CorePrims.doToday, "FORTH", "COMPINPF","( -- ) Pops up today's date");
-cfb1.BuildPrimitive("NOW", cfb1.Modules.CorePrims.doNow, "FORTH", "COMPINPF","( --  time ) Puts the time on the stack");
-cfb1.BuildPrimitive(">HHMMSS", cfb1.Modules.CorePrims.doToHoursMinSecs, "FORTH", "COMPINPF","( time -- ) Formats the time");
+cfb1.BuildPrimitive("TODAY", cfb1.Modules.CorePrims.doToday, "CorePrims.doToday", "FORTH", "COMPINPF","( -- ) Pops up today's date");
+cfb1.BuildPrimitive("NOW", cfb1.Modules.CorePrims.doNow, "CorePrims.doNow", "FORTH", "COMPINPF","( --  time ) Puts the time on the stack");
+cfb1.BuildPrimitive(">HHMMSS", cfb1.Modules.CorePrims.doToHoursMinSecs, "CorePrims.doToHoursMinSecs", "FORTH", "COMPINPF","( time -- ) Formats the time");
 
 // Stack manipulation
-cfb1.BuildPrimitive("DUP", cfb1.Modules.CorePrims.doDup, "FORTH", "COMPINPF","( val --  val val ) Duplicates the argument on top of the stack");
-cfb1.BuildPrimitive("SWAP", cfb1.Modules.CorePrims.doSwap, "FORTH", "COMPINPF","( val1 val2 -- val2 val1 ) Swaps the positions of the top two stack arguments");
-cfb1.BuildPrimitive("ROT", cfb1.Modules.CorePrims.doRot, "FORTH", "COMPINPF","( val1 val2 val3 -- val2 val3 val1 ) Moves the third stack argument to the top");
-cfb1.BuildPrimitive("-ROT", cfb1.Modules.CorePrims.doMinusRot, "FORTH", "COMPINPF","( val1 val2 val3 -- val3 val1 val2 ) Moves the top stack argument to the third position");
-cfb1.BuildPrimitive("NIP", cfb1.Modules.CorePrims.doNip, "FORTH", "COMPINPF","( val1 val2 -- val2 ) Removes second stack argument");
-cfb1.BuildPrimitive("TUCK", cfb1.Modules.CorePrims.doTuck, "FORTH", "COMPINPF","( val1 val2 -- val2 val1 val2 ) Copies top stack argument under second argument");
-cfb1.BuildPrimitive("OVER", cfb1.Modules.CorePrims.doOver, "FORTH", "COMPINPF","( val1 val2 -- val1 val2 val1 ) Copies second stack argument to the top of the stack");
-cfb1.BuildPrimitive("DROP", cfb1.Modules.CorePrims.doDrop, "FORTH", "COMPINPF","( val -- ) Drops the argument at the top of the stack");
-cfb1.BuildPrimitive("DEPTH", cfb1.Modules.CorePrims.doDepth, "FORTH", "COMPINPF","( -- n ) Returns the stack depth");
+cfb1.BuildPrimitive("DUP", cfb1.Modules.CorePrims.doDup, "CorePrims.doDup", "FORTH", "COMPINPF","( val --  val val ) Duplicates the argument on top of the stack");
+cfb1.BuildPrimitive("SWAP", cfb1.Modules.CorePrims.doSwap, "CorePrims.doSwap", "FORTH", "COMPINPF","( val1 val2 -- val2 val1 ) Swaps the positions of the top two stack arguments");
+cfb1.BuildPrimitive("ROT", cfb1.Modules.CorePrims.doRot, "CorePrims.doRot", "FORTH", "COMPINPF","( val1 val2 val3 -- val2 val3 val1 ) Moves the third stack argument to the top");
+cfb1.BuildPrimitive("-ROT", cfb1.Modules.CorePrims.doMinusRot, "CorePrims.doMinusRot", "FORTH", "COMPINPF","( val1 val2 val3 -- val3 val1 val2 ) Moves the top stack argument to the third position");
+cfb1.BuildPrimitive("NIP", cfb1.Modules.CorePrims.doNip, "CorePrims.doNip", "FORTH", "COMPINPF","( val1 val2 -- val2 ) Removes second stack argument");
+cfb1.BuildPrimitive("TUCK", cfb1.Modules.CorePrims.doTuck, "CorePrims.doTuck", "FORTH", "COMPINPF","( val1 val2 -- val2 val1 val2 ) Copies top stack argument under second argument");
+cfb1.BuildPrimitive("OVER", cfb1.Modules.CorePrims.doOver, "CorePrims.doOver", "FORTH", "COMPINPF","( val1 val2 -- val1 val2 val1 ) Copies second stack argument to the top of the stack");
+cfb1.BuildPrimitive("DROP", cfb1.Modules.CorePrims.doDrop, "CorePrims.doDrop", "FORTH", "COMPINPF","( val -- ) Drops the argument at the top of the stack");
+cfb1.BuildPrimitive("DEPTH", cfb1.Modules.CorePrims.doDepth, "CorePrims.doDepth", "FORTH", "COMPINPF","( -- n ) Returns the stack depth");
 
 // Logical operatives
-cfb1.BuildPrimitive("=", cfb1.Modules.LogicOps.doEquals, "FORTH", "COMPINPF","( val1 val2 -- flag ) -1 if equal, 0 otherwise");
-cfb1.BuildPrimitive("<>", cfb1.Modules.LogicOps.doNotEquals, "FORTH", "COMPINPF","( val1 val2 -- flag ) 0 if equal, -1 otherwise");
-cfb1.BuildPrimitive("<", cfb1.Modules.LogicOps.doLessThan, "FORTH", "COMPINPF","( val1 val2 -- flag ) -1 if less than, 0 otherwise");
-cfb1.BuildPrimitive(">", cfb1.Modules.LogicOps.doGreaterThan, "FORTH", "COMPINPF","( val1 val2 -- flag ) -1 if greater than, 0 otherwise");
-cfb1.BuildPrimitive("<=", cfb1.Modules.LogicOps.doLessThanOrEquals, "FORTH", "COMPINPF","( val1 val2 -- flag ) -1 if less than or equal to, 0 otherwise");
-cfb1.BuildPrimitive(">=", cfb1.Modules.LogicOps.doGreaterThanOrEquals, "FORTH", "COMPINPF","( val1 val2 -- flag ) -1 if greater than or equal to, 0 otherwise");
-cfb1.BuildPrimitive("NOT", cfb1.Modules.LogicOps.doNot, "FORTH", "COMPINPF","( val -- opval ) -1 if 0, 0 otherwise");
-cfb1.BuildPrimitive("AND", cfb1.Modules.LogicOps.doAnd, "FORTH", "COMPINPF","( val1 val2 -- flag ) -1 if both arguments are non-zero, 0 otherwise");
-cfb1.BuildPrimitive("OR", cfb1.Modules.LogicOps.doOr, "FORTH", "COMPINPF","( val1 val2 -- flag ) -1 if one or both arguments are non-zero, 0 otherwise");
-cfb1.BuildPrimitive("XOR", cfb1.Modules.LogicOps.doXor, "FORTH", "COMPINPF","( val1 val2 -- flag ) -1 if one and only one argument is non-zero, 0 otherwise");
+cfb1.BuildPrimitive("=", cfb1.Modules.LogicOps.doEquals, "LogicOps.doEquals", "FORTH", "COMPINPF","( val1 val2 -- flag ) -1 if equal, 0 otherwise");
+cfb1.BuildPrimitive("<>", cfb1.Modules.LogicOps.doNotEquals, "LogicOps.doNotEquals", "FORTH", "COMPINPF","( val1 val2 -- flag ) 0 if equal, -1 otherwise");
+cfb1.BuildPrimitive("<", cfb1.Modules.LogicOps.doLessThan, "LogicOps.doLessThan", "FORTH", "COMPINPF","( val1 val2 -- flag ) -1 if less than, 0 otherwise");
+cfb1.BuildPrimitive(">", cfb1.Modules.LogicOps.doGreaterThan, "LogicOps.doGreaterThan", "FORTH", "COMPINPF","( val1 val2 -- flag ) -1 if greater than, 0 otherwise");
+cfb1.BuildPrimitive("<=", cfb1.Modules.LogicOps.doLessThanOrEquals, "LogicOps.doLessThanOrEquals", "FORTH", "COMPINPF","( val1 val2 -- flag ) -1 if less than or equal to, 0 otherwise");
+cfb1.BuildPrimitive(">=", cfb1.Modules.LogicOps.doGreaterThanOrEquals, "LogicOps.doGreaterThanOrEquals", "FORTH", "COMPINPF","( val1 val2 -- flag ) -1 if greater than or equal to, 0 otherwise");
+cfb1.BuildPrimitive("NOT", cfb1.Modules.LogicOps.doNot, "LogicOps.doNot", "FORTH", "COMPINPF","( val -- opval ) -1 if 0, 0 otherwise");
+cfb1.BuildPrimitive("AND", cfb1.Modules.LogicOps.doAnd, "LogicOps.doAnd", "FORTH", "COMPINPF","( val1 val2 -- flag ) -1 if both arguments are non-zero, 0 otherwise");
+cfb1.BuildPrimitive("OR", cfb1.Modules.LogicOps.doOr, "LogicOps.doOr", "FORTH", "COMPINPF","( val1 val2 -- flag ) -1 if one or both arguments are non-zero, 0 otherwise");
+cfb1.BuildPrimitive("XOR", cfb1.Modules.LogicOps.doXor, "LogicOps.doXor", "FORTH", "COMPINPF","( val1 val2 -- flag ) -1 if one and only one argument is non-zero, 0 otherwise");
 
 // Compiler definitions
-cfb1.BuildPrimitive(",", cfb1.Modules.Compiler.doComma, "FORTH", "COMPINPF","( n --) Compiles value off the TOS into the next parameter field cell");
-cfb1.BuildPrimitive("COMPINPF", cfb1.Modules.Compiler.doComma, "IMMEDIATE", "COMPINPF","( n --) Does the same thing as , (comma) - given a different name for ease of reading");
-cfb1.BuildPrimitive("EXECUTE", cfb1.Modules.Compiler.doExecute, "FORTH", "COMPINPF","( address --) Executes the word corresponding to the address on the stack");
-cfb1.BuildPrimitive(":", cfb1.Modules.Compiler.CompileColon, "FORTH", "COMPINPF","( -- ) Starts compilation of a colon definition");
-cfb1.BuildPrimitive(";", cfb1.Modules.Compiler.doSemi, "IMMEDIATE", "EXECUTE","( -- ) Terminates compilation of a colon definition");
-cfb1.BuildPrimitive("COMPLIT", cfb1.Modules.Compiler.CompileLiteral, "IMMEDIATE", "EXECUTE","( -- ) Compiles doLit and a literal into the dictionary");
-cfb1.BuildPrimitive("doLiteral", cfb1.Modules.Compiler.doLiteral, "IMMEDIATE", "NOP","( -- lit ) Run-time code that pushes a literal onto the stack");
-cfb1.BuildPrimitive("HERE", cfb1.Modules.Compiler.doHere, "FORTH", "COMPINPF","( -- location ) Returns address of the next available dictionary location");
-cfb1.BuildPrimitive("CREATE", cfb1.Modules.Compiler.doCreate, "FORTH", "COMPINPF","CREATE <name>. Adds a named entry into the dictionary");
-cfb1.BuildPrimitive("DOES>", cfb1.Modules.Compiler.CompileDoes, "FORTH", "COMPINPF", "DOES> <list of runtime actions>. When defining word is created, copies code following it into the child definition")
+cfb1.BuildPrimitive(",", cfb1.Modules.Compiler.doComma, "Compiler.doComma", "FORTH", "COMPINPF","( n --) Compiles value off the TOS into the next parameter field cell");
+cfb1.BuildPrimitive("COMPINPF", cfb1.Modules.Compiler.doComma, "Compiler.doComma", "IMMEDIATE", "COMPINPF","( n --) Does the same thing as , (comma) - given a different name for ease of reading");
+cfb1.BuildPrimitive("EXECUTE", cfb1.Modules.Compiler.doExecute, "Compiler.doExecute", "FORTH", "COMPINPF","( address --) Executes the word corresponding to the address on the stack");
+cfb1.BuildPrimitive(":", cfb1.Modules.Compiler.CompileColon, "Compiler.CompileColon", "FORTH", "COMPINPF","( -- ) Starts compilation of a colon definition");
+cfb1.BuildPrimitive(";", cfb1.Modules.Compiler.doSemi, "doSemi", "IMMEDIATE", "EXECUTE","( -- ) Terminates compilation of a colon definition");
+cfb1.BuildPrimitive("COMPLIT", cfb1.Modules.Compiler.CompileLiteral, "Compiler.CompileLiteral", "IMMEDIATE", "EXECUTE","( -- ) Compiles doLit and a literal into the dictionary");
+cfb1.BuildPrimitive("doLiteral", cfb1.Modules.Compiler.doLiteral, "Compiler.doLiteral", "IMMEDIATE", "NOP","( -- lit ) Run-time code that pushes a literal onto the stack");
+cfb1.BuildPrimitive("HERE", cfb1.Modules.Compiler.doHere, "Compiler.doHere", "FORTH", "COMPINPF","( -- location ) Returns address of the next available dictionary location");
+cfb1.BuildPrimitive("CREATE", cfb1.Modules.Compiler.doCreate, "Compiler.doCreate", "FORTH", "COMPINPF","CREATE <name>. Adds a named entry into the dictionary");
 
-cfb1.BuildPrimitive("@", cfb1.Modules.Compiler.doFetch, "FORTH", "COMPINPF","( addr -- val ) Fetches the value in the param field  at addr");
-cfb1.BuildPrimitive("!", cfb1.Modules.Compiler.doStore, "FORTH", "COMPINPF","( val addr --) Stores the value in the param field  at addr");
-cfb1.BuildPrimitive("DEFINITIONS", cfb1.Modules.Compiler.doSetCurrentToContext, "FORTH",
+cfb1.BuildPrimitive("doDoes", cfb1.Modules.Compiler.DoDoes, "Compiler.DoDoes", "IMMEDIATE", "COMPINPF", "( address -- ) Run-time code for DOES>");
+cfb1.BuildPrimitive("DOES>", cfb1.Modules.Compiler.CompileDoes, "Compiler.CompileDoes", "FORTH", "COMPINPF", 
+                    "DOES> <list of runtime actions>. When defining word is created, copies code following it into the child definition");
+
+cfb1.BuildPrimitive("@", cfb1.Modules.Compiler.doFetch, "Compiler.doFetch", "FORTH", "COMPINPF","( addr -- val ) Fetches the value in the param field  at addr");
+cfb1.BuildPrimitive("!", cfb1.Modules.Compiler.doStore, "Compiler.doStore", "FORTH", "COMPINPF","( val addr --) Stores the value in the param field  at addr");
+cfb1.BuildPrimitive("DEFINITIONS", cfb1.Modules.Compiler.doSetCurrentToContext, "Compiler.doSetCurrentToContext", "FORTH",
                     "COMPINPF","(  -- ). Sets the current (compilation) vocabulary to the context vocabulary (the one on top of the vocabulary stack)");
-cfb1.BuildPrimitive("IMMEDIATE", cfb1.Modules.Compiler.doImmediate, "FORTH", "COMPINPF","( -- ) Flags a word as immediate (executes instead of compiling inside a colon definition)");
+cfb1.BuildPrimitive("IMMEDIATE", cfb1.Modules.Compiler.doImmediate, "Compiler.doImmediate", "FORTH", "COMPINPF","( -- ) Flags a word as immediate (executes instead of compiling inside a colon definition)");
 
 // Branching compiler definitions
-cfb1.BuildPrimitive("IF", cfb1.Modules.Compiler.CompileIf, "IMMEDIATE", "EXECUTE","( -- location ) Compile-time code for IF");
-cfb1.BuildPrimitive("ELSE", cfb1.Modules.Compiler.CompileElse, "IMMEDIATE", "EXECUTE","( -- location ) Compile-time code for ELSE");
-cfb1.BuildPrimitive("THEN", cfb1.Modules.Compiler.CompileThen, "IMMEDIATE", "EXECUTE","( -- location ) Compile-time code for THEN");
-cfb1.BuildPrimitive("0BRANCH", cfb1.Modules.Compiler.do0Branch, "IMMEDIATE", "NOP","( flag -- ) Run-time code for IF");
-cfb1.BuildPrimitive("JUMP", cfb1.Modules.Compiler.doJump, "IMMEDIATE", "NOP","( -- ) Jumps unconditionally to the parameter field location next to it and is compiled by ELSE");
-cfb1.BuildPrimitive("doElse", cfb1.Modules.CorePrims.doNOP, "IMMEDIATE", "NOP","( -- ) Run-time code for ELSE");
-cfb1.BuildPrimitive("doThen", cfb1.Modules.CorePrims.doNOP, "IMMEDIATE", "NOP","( -- ) Run-time code for THEN");
-cfb1.BuildPrimitive("BEGIN", cfb1.Modules.Compiler.CompileBegin, "IMMEDIATE", "EXECUTE","( -- beginLoc ) Compile-time code for BEGIN");
-cfb1.BuildPrimitive("UNTIL", cfb1.Modules.Compiler.CompileUntil, "IMMEDIATE", "EXECUTE","( beginLoc -- ) Compile-time code for UNTIL");
-cfb1.BuildPrimitive("doBegin", cfb1.Modules.CorePrims.doNOP, "IMMEDIATE", "NOP","( -- ) Run-time code for BEGIN");
-cfb1.BuildPrimitive("DO", cfb1.Modules.Compiler.CompileDo, "IMMEDIATE", "EXECUTE","( -- beginLoc ) Compile-time code for DO");
-cfb1.BuildPrimitive("LOOP", cfb1.Modules.Compiler.CompileLoop, "IMMEDIATE", "EXECUTE","( -- beginLoc ) Compile-time code for LOOP");
-cfb1.BuildPrimitive("+LOOP", cfb1.Modules.Compiler.CompilePlusLoop, "IMMEDIATE", "EXECUTE","( -- beginLoc ) Compile-time code for +LOOP");
-cfb1.BuildPrimitive("doStartDo", cfb1.Modules.Compiler.doStartDo, "IMMEDIATE", "COMPINPF","( start end -- ) Starts off the Do by getting the start and end");
-cfb1.BuildPrimitive("doDo", cfb1.Modules.CorePrims.doNOP, "IMMEDIATE", "COMPINPF","( -- ) Marker for DoLoop to return to");
-cfb1.BuildPrimitive("doLoop", cfb1.Modules.Compiler.doLoop, "IMMEDIATE", "COMPINPF","( -- ) Loops back to doDo until the start equals the end");
-cfb1.BuildPrimitive("doPlusLoop", cfb1.Modules.Compiler.doPlusLoop, "IMMEDIATE", "COMPINPF","( inc -- ) Loops back to doDo until the start >= the end and increments with inc");
-cfb1.BuildPrimitive("I", cfb1.Modules.Compiler.doIndexI, "FORTH", "COMPINPF","( -- index ) Rturns the index of I");
-cfb1.BuildPrimitive("J", cfb1.Modules.Compiler.doIndexJ, "FORTH", "COMPINPF","( -- index ) Rturns the index of J");
-cfb1.BuildPrimitive("K", cfb1.Modules.Compiler.doIndexK, "FORTH", "COMPINPF","( -- index ) Rturns the index of K");
-cfb1.BuildPrimitive("CHKOFF", cfb1.Modules.Compiler.doArgsCheckOff, "FORTH", "COMPINPF","( -- ) Turns check for stack args off");
-cfb1.BuildPrimitive("CHKON", cfb1.Modules.Compiler.doArgsCheckOn, "FORTH", "COMPINPF","( -- ) Turns check for stack args on");
+cfb1.BuildPrimitive("IF", cfb1.Modules.Compiler.CompileIf, "Compiler.CompileIf", "IMMEDIATE", "EXECUTE","( -- location ) Compile-time code for IF");
+cfb1.BuildPrimitive("ELSE", cfb1.Modules.Compiler.CompileElse, "Compiler.CompileElse", "IMMEDIATE", "EXECUTE","( -- location ) Compile-time code for ELSE");
+cfb1.BuildPrimitive("THEN", cfb1.Modules.Compiler.CompileThen, "Compiler.CompileThen", "IMMEDIATE", "EXECUTE","( -- location ) Compile-time code for THEN");
+cfb1.BuildPrimitive("0BRANCH", cfb1.Modules.Compiler.do0Branch, "Compiler.do0Branch", "IMMEDIATE", "NOP","( flag -- ) Run-time code for IF");
+cfb1.BuildPrimitive("JUMP", cfb1.Modules.Compiler.doJump, "Compiler.doJump", "IMMEDIATE", "NOP","( -- ) Jumps unconditionally to the parameter field location next to it and is compiled by ELSE");
+cfb1.BuildPrimitive("doElse", cfb1.Modules.CorePrims.doNOP, "CorePrims.doNOP", "IMMEDIATE", "NOP","( -- ) Run-time code for ELSE");
+cfb1.BuildPrimitive("doThen", cfb1.Modules.CorePrims.doNOP, "CorePrims.doNOP", "IMMEDIATE", "NOP","( -- ) Run-time code for THEN");
+cfb1.BuildPrimitive("BEGIN", cfb1.Modules.Compiler.CompileBegin, "Compiler.CompileBegin", "IMMEDIATE", "EXECUTE","( -- beginLoc ) Compile-time code for BEGIN");
+cfb1.BuildPrimitive("UNTIL", cfb1.Modules.Compiler.CompileUntil, "Compiler.CompileUntil", "IMMEDIATE", "EXECUTE","( beginLoc -- ) Compile-time code for UNTIL");
+cfb1.BuildPrimitive("doBegin", cfb1.Modules.CorePrims.doNOP, "CorePrims.doNOP", "IMMEDIATE", "NOP","( -- ) Run-time code for BEGIN");
+cfb1.BuildPrimitive("DO", cfb1.Modules.Compiler.CompileDo, "Compiler.CompileDo", "IMMEDIATE", "EXECUTE","( -- beginLoc ) Compile-time code for DO");
+cfb1.BuildPrimitive("LOOP", cfb1.Modules.Compiler.CompileLoop, "Compiler.CompileLoop", "IMMEDIATE", "EXECUTE","( -- beginLoc ) Compile-time code for LOOP");
+cfb1.BuildPrimitive("+LOOP", cfb1.Modules.Compiler.CompilePlusLoop, "Compiler.CompilePlusLoop", "IMMEDIATE", "EXECUTE","( -- beginLoc ) Compile-time code for +LOOP");
+cfb1.BuildPrimitive("doStartDo", cfb1.Modules.Compiler.doStartDo, "Compiler.doStartDo", "IMMEDIATE", "COMPINPF","( start end -- ) Starts off the Do by getting the start and end");
+cfb1.BuildPrimitive("doDo", cfb1.Modules.CorePrims.doNOP, "CorePrims.doNOP", "IMMEDIATE", "COMPINPF","( -- ) Marker for DoLoop to return to");
+cfb1.BuildPrimitive("doLoop", cfb1.Modules.Compiler.doLoop, "Compiler.doLoop", "IMMEDIATE", "COMPINPF","( -- ) Loops back to doDo until the start equals the end");
+cfb1.BuildPrimitive("doPlusLoop", cfb1.Modules.Compiler.doPlusLoop, "Compiler.doPlusLoop", "IMMEDIATE", "COMPINPF","( inc -- ) Loops back to doDo until the start >= the end and increments with inc");
+cfb1.BuildPrimitive("I", cfb1.Modules.Compiler.doIndexI, "doIndexI", "FORTH", "COMPINPF","( -- index ) Rturns the index of I");
+cfb1.BuildPrimitive("J", cfb1.Modules.Compiler.doIndexJ, "doIndexJ", "FORTH", "COMPINPF","( -- index ) Rturns the index of J");
+cfb1.BuildPrimitive("K", cfb1.Modules.Compiler.doIndexK, "doIndexK", "FORTH", "COMPINPF","( -- index ) Rturns the index of K");
+cfb1.BuildPrimitive("CHKOFF", cfb1.Modules.Compiler.doArgsCheckOff, "doArgsCheckOff", "FORTH", "COMPINPF","( -- ) Turns check for stack args off");
+cfb1.BuildPrimitive("CHKON", cfb1.Modules.Compiler.doArgsCheckOn, "doArgsCheckOn", "FORTH", "COMPINPF","( -- ) Turns check for stack args on");
 
-cfb1.BuildPrimitive("\\", cfb1.Modules.Compiler.doSingleLineCmts, "FORTH", gsp.BFC.ExecZeroAction,"( -- ) Single-line comment handling");
-cfb1.BuildPrimitive("(", cfb1.Modules.Compiler.doParenCmts, "FORTH", gsp.BFC.ExecZeroAction,"( -- ) Multiline comment handling");
-cfb1.BuildPrimitive("\{", cfb1.Modules.Compiler.doCompileList, "FORTH", gsp.BFC.ExecZeroAction,"( -- list ) List compiler");
-cfb1.BuildPrimitive("TEST", cfb1.Modules.AppSpec.doTest, "APPSPEC", "COMPINPF","( -- ) Do what you like here");
+cfb1.BuildPrimitive("\\", cfb1.Modules.Compiler.doSingleLineCmts, "Compiler.doSingleLineCmts", "FORTH", gsp.BFC.ExecZeroAction,"( -- ) Single-line comment handling");
+cfb1.BuildPrimitive("(", cfb1.Modules.Compiler.doParenCmts, "Compiler.doParenCmts", "FORTH", gsp.BFC.ExecZeroAction,"( -- ) Multiline comment handling");
+cfb1.BuildPrimitive("\{", cfb1.Modules.Compiler.doCompileList, "Compiler.doCompileList", "FORTH", gsp.BFC.ExecZeroAction,"( -- list ) List compiler");
+cfb1.BuildPrimitive("TEST", cfb1.Modules.AppSpec.doTest, "AppSpec.doTest", "APPSPEC", "COMPINPF","( -- ) Do what you like here");
 
 cfb1.BuildHighLevel(gsp, ": CONSTANT CREATE , DOES> @ ;", "( val -- ) CONSTANT <name>. Defining word for scalar constants");
 cfb1.BuildHighLevel(gsp, ": VARIABLE CREATE 0 , ;", "VARIABLE <name>. Used for simple scalar data storage and retrieval");
 // APPSPEC is a convenient vocabulary to group your application specific primitives in
 gsp.CurrentVocab = "APPSPEC";
-cfb1.BuildHighLevel(gsp, ": DOTEST DO I LOOP ;", "Simple testing definition");
+cfb1.BuildHighLevel(gsp, ": DOTEST DO HELLO LOOP ;", "Simple testing definition");
 cfb1.BuildHighLevel(gsp, ": TL2 CHKOFF DO I 3 0 DO J LOOP LOOP CHKON ;", "Simple testing definition 2");
