@@ -36,8 +36,14 @@
 
         // puts textarea values onto the stack
         var parseStack = function (taval) {
+            var ds0 = [];
             var ds = [];
-            ds = taval.split("\n").reverse();
+            ds0 = taval.split("\n").reverse();
+            for (i = 0; i < ds0.length; i++) {
+                if (ds0[i].trim() != "") {
+                    ds.push(ds0[i]);
+                } 
+            }
             return ds;
         };
         

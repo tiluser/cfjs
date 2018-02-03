@@ -41,9 +41,10 @@ var GlobalSimpleProps = function (cfb) {
     this.PostfilterStack = [];
     this.PADarea = [];
     this.ParsedInput = [];
-    this.LoopName = [];
-    this.LoopIndex = [];
-    this.LoopEnd = [];
+    this.loopLabels = ["I", "J", "K"];
+    this.LoopLabelPtr = 0;
+    this.LoopCurrIndexes = [0, 0, 0];
+    this.IndexI;
     this.OuterPtr = 0;
     this.InnerPtr = 0;
     this.ParamFieldPtr = 0;
@@ -53,7 +54,7 @@ var GlobalSimpleProps = function (cfb) {
     this.HelpCommentField = "";
     this.CompiledList = [];
     this.BFC = new BasicForthConstants();
-    this.ColonFirstDefined = false;
+    this.MinArgsSwitch = true;   // When true MinArgs is checked
 };
 
 GlobalSimpleProps.method("cleanFields", function () {
@@ -61,9 +62,8 @@ GlobalSimpleProps.method("cleanFields", function () {
     this.ReturnStack = [];
     this.PADarea = [];
     this.ParsedInput = [];
-    this.LoopName = [];
-    this.LoopIndex = [];
-    this.LoopEnd = [];
+    this.LoopLabelPtr = 0;
+    this.LoopCurrIndexes = [0, 0, 0];
     this.OuterPtr = 0;
     this.InnerPtr = 0;
     this.ParamFieldPtr = 0;
@@ -76,7 +76,9 @@ GlobalSimpleProps.method("cleanFields", function () {
 
 GlobalSimpleProps.method('hasMinArgs', function (stack, minSize) { 
     var i;
-
+    if (this.MinArgsSwitch === false) {
+        return;
+    }
     for (i = stack.length - 1; i >= 0; i--) {
         if (stack[i] == "" || stack.length < minSize) {
             alert("Error: Stack underflow");
@@ -96,6 +98,16 @@ var ReturnLoc = function (dictAddr, pfAddr) {
     this.DictAddr = dictAddr;
     this.ParamFieldAddr = pfAddr;
 };
+
+var LoopInfo = function(label, index, limit) {
+    "use strict";
+    if (!(this instanceof LoopInfo)) {
+        throw new Error("LoopInfo needs to be called with the new keyword");
+    }
+    this.Label = label;
+    this.Index = index;
+    this.Limit = limit;
+}
 
 // Colon definitions are built in the PAD area - each new entry is a triplet consisting of the
 // word's fully qualified name, its dictionary address, and associated compilation action. 
@@ -257,10 +269,16 @@ CorePrims.method("doOver", function (gsp) {
 });
 
 CorePrims.method("doDrop", function (gsp) {
+    var beforeArgCount = gsp.DataStack.length;
     if (gsp.hasMinArgs(gsp.DataStack, 1) === false) { 
         return;
     }
     gsp.DataStack.pop();
+    var afterArgCount = gsp.DataStack.length;
+    if (beforeArgCount === afterArgCount) {
+        alert("Error: stack underflow");
+        gsp.cleanFields();
+    }
 });
 
 CorePrims.method("doDepth", function (gsp) {
@@ -543,8 +561,6 @@ Compiler.method("doCreate", function (gsp) {
     gsp.OuterPtr += 2;   
 });
 
-
-
 Compiler.method("CompileColon", function (gsp) {
     var hereLoc = gsp.CreoleForthBundle.row + 1 ;
     var name = gsp.ParsedInput[gsp.OuterPtr + 1];
@@ -774,43 +790,122 @@ Compiler.method("CompileLoop", function (gsp) {
     newCreoleWord.ParamField.push(doLoc);
 });
 
+Compiler.method("CompilePlusLoop", function (gsp) {
+    if (gsp.hasMinArgs(gsp.DataStack, 1) === false) { 
+        return;
+    }       
+    var newRow = gsp.CreoleForthBundle.row;
+    var newCreoleWord = gsp.CreoleForthBundle.Address[newRow];
+    var loopAddr = gsp.CreoleForthBundle["doPlusLoop.IMMEDIATE"].IndexField;
+    var doLoc = gsp.DataStack.pop();
+    newCreoleWord.ParamField.push(loopAddr);
+    newCreoleWord.ParamField.push(doLoc);
+});
+
 Compiler.method("doStartDo", function (gsp) {
     if (gsp.hasMinArgs(gsp.DataStack, 2) === false) { 
         return;
     } 
+    var rLoc = gsp.ReturnStack.pop();
     var startIndex = gsp.DataStack.pop();
-    var loopEnd = gsp.DataStack.pop();
-    gsp.LoopIndex.push(startIndex);
-    gsp.LoopEnd.push(loopEnd - 1);
+    var loopEnd = gsp.DataStack.pop();  
+    var li = new LoopInfo(gsp.loopLabels[gsp.LoopLabelPtr], startIndex, loopEnd);
+    gsp.LoopCurrIndexes = [0, 0, 0];
+    
+    gsp.LoopLabelPtr += 1;
+    gsp.ReturnStack.push(li);
+    gsp.ReturnStack.push(rLoc);
 });
 
-Compiler.method("doLoop", function (gsp) {
+Compiler.method("doPlusLoop", function (gsp) {
+  //  gsp.MinArgsSwitch = false;
+    var incVal = gsp.DataStack.pop();
     var currWord = gsp.CreoleForthBundle.Address[gsp.InnerPtr];
     var paramField = currWord.ParamField;
     var rLoc = gsp.ReturnStack.pop();
+    var li = gsp.ReturnStack.pop();
     var jumpAddr = paramField[rLoc.ParamFieldAddr];
-    var currIndex = gsp.LoopIndex.pop();
-    var loopEnd = gsp.LoopEnd.pop();
-    
-    if (Number(currIndex) == Number(loopEnd)) {
+    var loopLimit = li.Limit;
+    var loopLabel = li.Label;
+    var currIndex = li.Index;
+
+    if (incVal < 0) {
+       loopLimit += incVal;
+    }
+    else {
+       loopLimit -= incVal; 
+    }
+    if ( ( (Number(incVal) > 0) && (Number(currIndex) >= Number(loopLimit)) ) || 
+         ( (Number(incVal) < 0) && (Number(currIndex) <= Number(loopLimit)) )
+       ) {
         gsp.ParamFieldPtr += 1;  
         rLoc.ParamFieldAddr = gsp.ParamFieldPtr;
+        gsp.LoopLabelPtr -= 1;
     }
     else {
         gsp.ParamFieldPtr = jumpAddr;
-        currIndex = Number(currIndex) + 1;
-        gsp.LoopIndex.push(currIndex);
-        gsp.LoopEnd.push(loopEnd);
+        currIndex = Number(currIndex) + incVal;
+        li.Index = currIndex;
         rLoc.ParamFieldAddr = gsp.ParamFieldPtr;
+        gsp.ReturnStack.push(li);
     }
-    gsp.ReturnStack.push(rLoc);    
+    switch (loopLabel) {
+        case "I" : gsp.LoopCurrIndexes[0] = currIndex;
+            break;
+       case "J" : gsp.LoopCurrIndexes[1] = currIndex;
+            break;
+        case "K" : gsp.LoopCurrIndexes[2] = currIndex;
+            break;    
+    }
+    gsp.ReturnStack.push(rLoc);  
+  //  gsp.MinArgsSwitch = true;
 });
 
-Compiler.method("doDoes", function (gsp) {
-    var execToken = gsp.CreoleForthBundle.Address[gsp.InnerPtr].IndexField;
-    gsp.ParamFieldPtr += 1;
-    gsp.DataStack.push(execToken);
+Compiler.method("doArgsCheckOff", function (gsp) {
+    gsp.MinArgsSwitch = false;
+});
+
+Compiler.method("doArgsCheckOn", function (gsp) {
+    gsp.MinArgsSwitch = true;
+});
+
+Compiler.method("doLoop", function (gsp) {
+    gsp.DataStack.push(1);
+    var codeField = gsp.CreoleForthBundle["doPlusLoop.IMMEDIATE"].CodeField;
+    codeField(gsp);
+});
+
+Compiler.method("doIndexI", function (gsp) {
+    gsp.DataStack.push(gsp.LoopCurrIndexes[0]);
+});
+
+Compiler.method("doIndexJ", function (gsp) {
+    gsp.DataStack.push(gsp.LoopCurrIndexes[1]);
+});
+
+Compiler.method("doIndexK", function (gsp) {
+    gsp.DataStack.push(gsp.LoopCurrIndexes[2]);
+});
+
+Compiler.method("doDoes", function (gsp) {   
+    var currWord = gsp.CreoleForthBundle.Address[gsp.InnerPtr];
+    var execToken;
+    if (currWord.CodeField === cfb1.Modules.Compiler.doDoes) {
+        execToken = paramField[1];
+        gsp.ParamFieldPtr += 2;
+    }
+    else {
+        var rLoc = gsp.ReturnStack.pop();   
+        doesWordAddr = rLoc.DictAddr;
+        currParamFieldPtr = rLoc.ParamFieldAddr - 1;
+        execToken = doesWordAddr.paramField[currParamFieldPtr];
+        gsp.ParamFieldPtr =  currParamFieldPtr + 2;
+        gsp.ReturnStack.push(rLoc);
+    }
+ 
+    gsp.MinArgsSwitch = false;
     gsp.CreoleForthBundle.Modules.Interpreter.doColon(gsp);
+    gsp.MinArgsSwitch = true;
 });
 
 // 1. Copy the code beyond DOES> into the defining word to the new definition
@@ -840,6 +935,9 @@ Compiler.method("CompileDoes", function (gsp) {
         }
     }
     
+    // Need the definition's address so doDoes can get it easily either when it's being
+    // called from the interpreter for from within a compiled definition
+    childCreoleWord.ParamField.push(newRow);
     i = 0;
     while (startCopyPoint < parentCreoleWord.ParamField.length) {
         childCreoleWord.ParamField.push(parentCreoleWord.ParamField[startCopyPoint]);
@@ -849,8 +947,8 @@ Compiler.method("CompileDoes", function (gsp) {
     
     rLoc.ParamFieldAddr += i;
     gsp.ReturnStack.push(rLoc);
-//    gsp.CreoleForthBundle.Address[newRow] = childCreoleWord;
-//    gsp.CreoleForthBundle[fqNameField] = childCreoleWord;
+  //  gsp.CreoleForthBundle.Address[newRow] = childCreoleWord;
+ //   gsp.CreoleForthBundle[fqNameField] = childCreoleWord;
 });
 
 Compiler.method("doJump", function (gsp) {
@@ -910,6 +1008,16 @@ Compiler.method("doSetCurrentToContext", function (gsp) {
     var currentVocab = gsp.VocabStack[gsp.VocabStack.length - 1];
     gsp.CurrentVocab = currentVocab;
     console.log("Current vocab is now " + gsp.CurrentVocab);
+});
+
+Compiler.method("doImmediate", function (gsp) {
+    var newRow = gsp.CreoleForthBundle.row;
+    var newCreoleWord = gsp.CreoleForthBundle.Address[newRow];
+    var fqName = newCreoleWord.fqNameField;
+    newCreoleWord.CompileAction = "EXECUTE";
+    newCreoleWord.Vocabulary = "IMMEDIATE";
+    gsp.CreoleForthBundle.Address[newRow] = newCreoleWord;
+    gsp.CreoleForthBundle[fqName] = newCreoleWord;
 });
 
 var LogicOps = function () {
@@ -1225,6 +1333,7 @@ cfb1.BuildPrimitive("@", cfb1.Modules.Compiler.doFetch, "FORTH", "COMPINPF","( a
 cfb1.BuildPrimitive("!", cfb1.Modules.Compiler.doStore, "FORTH", "COMPINPF","( val addr --) Stores the value in the param field  at addr");
 cfb1.BuildPrimitive("DEFINITIONS", cfb1.Modules.Compiler.doSetCurrentToContext, "FORTH",
                     "COMPINPF","(  -- ). Sets the current (compilation) vocabulary to the context vocabulary (the one on top of the vocabulary stack)");
+cfb1.BuildPrimitive("IMMEDIATE", cfb1.Modules.Compiler.doImmediate, "FORTH", "COMPINPF","( -- ) Flags a word as immediate (executes instead of compiling inside a colon definition)");
 
 // Branching compiler definitions
 cfb1.BuildPrimitive("IF", cfb1.Modules.Compiler.CompileIf, "IMMEDIATE", "EXECUTE","( -- location ) Compile-time code for IF");
@@ -1239,9 +1348,16 @@ cfb1.BuildPrimitive("UNTIL", cfb1.Modules.Compiler.CompileUntil, "IMMEDIATE", "E
 cfb1.BuildPrimitive("doBegin", cfb1.Modules.CorePrims.doNOP, "IMMEDIATE", "NOP","( -- ) Run-time code for BEGIN");
 cfb1.BuildPrimitive("DO", cfb1.Modules.Compiler.CompileDo, "IMMEDIATE", "EXECUTE","( -- beginLoc ) Compile-time code for DO");
 cfb1.BuildPrimitive("LOOP", cfb1.Modules.Compiler.CompileLoop, "IMMEDIATE", "EXECUTE","( -- beginLoc ) Compile-time code for LOOP");
+cfb1.BuildPrimitive("+LOOP", cfb1.Modules.Compiler.CompilePlusLoop, "IMMEDIATE", "EXECUTE","( -- beginLoc ) Compile-time code for +LOOP");
 cfb1.BuildPrimitive("doStartDo", cfb1.Modules.Compiler.doStartDo, "IMMEDIATE", "COMPINPF","( start end -- ) Starts off the Do by getting the start and end");
 cfb1.BuildPrimitive("doDo", cfb1.Modules.CorePrims.doNOP, "IMMEDIATE", "COMPINPF","( -- ) Marker for DoLoop to return to");
 cfb1.BuildPrimitive("doLoop", cfb1.Modules.Compiler.doLoop, "IMMEDIATE", "COMPINPF","( -- ) Loops back to doDo until the start equals the end");
+cfb1.BuildPrimitive("doPlusLoop", cfb1.Modules.Compiler.doPlusLoop, "IMMEDIATE", "COMPINPF","( inc -- ) Loops back to doDo until the start >= the end and increments with inc");
+cfb1.BuildPrimitive("I", cfb1.Modules.Compiler.doIndexI, "FORTH", "COMPINPF","( -- index ) Rturns the index of I");
+cfb1.BuildPrimitive("J", cfb1.Modules.Compiler.doIndexJ, "FORTH", "COMPINPF","( -- index ) Rturns the index of J");
+cfb1.BuildPrimitive("K", cfb1.Modules.Compiler.doIndexK, "FORTH", "COMPINPF","( -- index ) Rturns the index of K");
+cfb1.BuildPrimitive("CHKOFF", cfb1.Modules.Compiler.doArgsCheckOff, "FORTH", "COMPINPF","( -- ) Turns check for stack args off");
+cfb1.BuildPrimitive("CHKON", cfb1.Modules.Compiler.doArgsCheckOn, "FORTH", "COMPINPF","( -- ) Turns check for stack args on");
 
 cfb1.BuildPrimitive("\\", cfb1.Modules.Compiler.doSingleLineCmts, "FORTH", gsp.BFC.ExecZeroAction,"( -- ) Single-line comment handling");
 cfb1.BuildPrimitive("(", cfb1.Modules.Compiler.doParenCmts, "FORTH", gsp.BFC.ExecZeroAction,"( -- ) Multiline comment handling");
@@ -1252,4 +1368,5 @@ cfb1.BuildHighLevel(gsp, ": CONSTANT CREATE , DOES> @ ;", "( val -- ) CONSTANT <
 cfb1.BuildHighLevel(gsp, ": VARIABLE CREATE 0 , ;", "VARIABLE <name>. Used for simple scalar data storage and retrieval");
 // APPSPEC is a convenient vocabulary to group your application specific primitives in
 gsp.CurrentVocab = "APPSPEC";
-cfb1.BuildHighLevel(gsp, ": DOTEST DO TULIP LOOP ;", "Simple testing definition");
+cfb1.BuildHighLevel(gsp, ": DOTEST DO I LOOP ;", "Simple testing definition");
+cfb1.BuildHighLevel(gsp, ": TL2 CHKOFF DO I 3 0 DO J LOOP LOOP CHKON ;", "Simple testing definition 2");
