@@ -887,6 +887,15 @@ Compiler.method("doIndexK", function (gsp) {
     gsp.DataStack.push(gsp.LoopCurrIndexes[2]);
 });
 
+// DOES> only works right now outside a compiled definition
+Compiler.method("doDoes", function (gsp) {
+    var execToken = gsp.CreoleForthBundle.Address[gsp.InnerPtr].IndexField;
+    gsp.ParamFieldPtr += 1;
+    gsp.DataStack.push(execToken);
+    gsp.CreoleForthBundle.Modules.Interpreter.doColon(gsp);
+});
+
+/*
 Compiler.method("doDoes", function (gsp) {   
     var currWord = gsp.CreoleForthBundle.Address[gsp.InnerPtr];
     var execToken;
@@ -950,6 +959,7 @@ Compiler.method("CompileDoes", function (gsp) {
   //  gsp.CreoleForthBundle.Address[newRow] = childCreoleWord;
  //   gsp.CreoleForthBundle[fqNameField] = childCreoleWord;
 });
+*/
 
 Compiler.method("doJump", function (gsp) {
     var currWord = gsp.CreoleForthBundle.Address[gsp.InnerPtr]; 
