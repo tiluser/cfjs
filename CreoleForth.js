@@ -1,3 +1,11 @@
+// Creole Forth for JavaScript
+// Version 0.01
+// Copyright 2018 Joseph M. O'Connor
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+// From Crockford's JavaScript: The Good Parts
 Function.prototype.method = function (name, func) {
     if (!this.prototype[name]) {
         this.prototype[name] = func;
@@ -14,6 +22,7 @@ String.method('trim', function () {
     return this.replace(/^\s+|\s$/g, '');
 });
 
+// Start of Creole Forth-specific code
 var BasicForthConstants = function () {
     "use strict";
 
@@ -45,7 +54,6 @@ var GlobalSimpleProps = function (cfb) {
     this.loopLabels = ["I", "J", "K"];
     this.LoopLabelPtr = 0;
     this.LoopCurrIndexes = [0, 0, 0];
-    this.IndexI;
     this.OuterPtr = 0;
     this.InnerPtr = 0;
     this.ParamFieldPtr = 0;
@@ -1343,7 +1351,7 @@ cfb1.BuildPrimitive(",", cfb1.Modules.Compiler.doComma, "Compiler.doComma", "FOR
 cfb1.BuildPrimitive("COMPINPF", cfb1.Modules.Compiler.doComma, "Compiler.doComma", "IMMEDIATE", "COMPINPF","( n --) Does the same thing as , (comma) - given a different name for ease of reading");
 cfb1.BuildPrimitive("EXECUTE", cfb1.Modules.Compiler.doExecute, "Compiler.doExecute", "FORTH", "COMPINPF","( address --) Executes the word corresponding to the address on the stack");
 cfb1.BuildPrimitive(":", cfb1.Modules.Compiler.CompileColon, "Compiler.CompileColon", "FORTH", "COMPINPF","( -- ) Starts compilation of a colon definition");
-cfb1.BuildPrimitive(";", cfb1.Modules.Compiler.doSemi, "doSemi", "IMMEDIATE", "EXECUTE","( -- ) Terminates compilation of a colon definition");
+cfb1.BuildPrimitive(";", cfb1.Modules.Compiler.doSemi, "Compiler.doSemi", "IMMEDIATE", "EXECUTE","( -- ) Terminates compilation of a colon definition");
 cfb1.BuildPrimitive("COMPLIT", cfb1.Modules.Compiler.CompileLiteral, "Compiler.CompileLiteral", "IMMEDIATE", "EXECUTE","( -- ) Compiles doLit and a literal into the dictionary");
 cfb1.BuildPrimitive("doLiteral", cfb1.Modules.Compiler.doLiteral, "Compiler.doLiteral", "IMMEDIATE", "NOP","( -- lit ) Run-time code that pushes a literal onto the stack");
 cfb1.BuildPrimitive("HERE", cfb1.Modules.Compiler.doHere, "Compiler.doHere", "FORTH", "COMPINPF","( -- location ) Returns address of the next available dictionary location");
@@ -1377,12 +1385,11 @@ cfb1.BuildPrimitive("doStartDo", cfb1.Modules.Compiler.doStartDo, "Compiler.doSt
 cfb1.BuildPrimitive("doDo", cfb1.Modules.CorePrims.doNOP, "CorePrims.doNOP", "IMMEDIATE", "COMPINPF","( -- ) Marker for DoLoop to return to");
 cfb1.BuildPrimitive("doLoop", cfb1.Modules.Compiler.doLoop, "Compiler.doLoop", "IMMEDIATE", "COMPINPF","( -- ) Loops back to doDo until the start equals the end");
 cfb1.BuildPrimitive("doPlusLoop", cfb1.Modules.Compiler.doPlusLoop, "Compiler.doPlusLoop", "IMMEDIATE", "COMPINPF","( inc -- ) Loops back to doDo until the start >= the end and increments with inc");
-cfb1.BuildPrimitive("I", cfb1.Modules.Compiler.doIndexI, "doIndexI", "FORTH", "COMPINPF","( -- index ) Rturns the index of I");
-cfb1.BuildPrimitive("J", cfb1.Modules.Compiler.doIndexJ, "doIndexJ", "FORTH", "COMPINPF","( -- index ) Rturns the index of J");
-cfb1.BuildPrimitive("K", cfb1.Modules.Compiler.doIndexK, "doIndexK", "FORTH", "COMPINPF","( -- index ) Rturns the index of K");
-cfb1.BuildPrimitive("CHKOFF", cfb1.Modules.Compiler.doArgsCheckOff, "doArgsCheckOff", "FORTH", "COMPINPF","( -- ) Turns check for stack args off");
-cfb1.BuildPrimitive("CHKON", cfb1.Modules.Compiler.doArgsCheckOn, "doArgsCheckOn", "FORTH", "COMPINPF","( -- ) Turns check for stack args on");
-
+cfb1.BuildPrimitive("I", cfb1.Modules.Compiler.doIndexI, "Compiler.doIndexI", "FORTH", "COMPINPF","( -- index ) Rturns the index of I");
+cfb1.BuildPrimitive("J", cfb1.Modules.Compiler.doIndexJ, "Compiler.doIndexJ", "FORTH", "COMPINPF","( -- index ) Rturns the index of J");
+cfb1.BuildPrimitive("K", cfb1.Modules.Compiler.doIndexK, "Compiler.doIndexK", "FORTH", "COMPINPF","( -- index ) Rturns the index of K");
+cfb1.BuildPrimitive("CHKOFF", cfb1.Modules.Compiler.doArgsCheckOff, "Compiler.doArgsCheckOff", "FORTH", "COMPINPF","( -- ) Turns check for stack args off");
+cfb1.BuildPrimitive("CHKON", cfb1.Modules.Compiler.doArgsCheckOn, "Compiler.doArgsCheckOn", "FORTH", "COMPINPF","( -- ) Turns check for stack args on");
 cfb1.BuildPrimitive("\\", cfb1.Modules.Compiler.doSingleLineCmts, "Compiler.doSingleLineCmts", "FORTH", gsp.BFC.ExecZeroAction,"( -- ) Single-line comment handling");
 cfb1.BuildPrimitive("(", cfb1.Modules.Compiler.doParenCmts, "Compiler.doParenCmts", "FORTH", gsp.BFC.ExecZeroAction,"( -- ) Multiline comment handling");
 cfb1.BuildPrimitive("\{", cfb1.Modules.Compiler.doCompileList, "Compiler.doCompileList", "FORTH", gsp.BFC.ExecZeroAction,"( -- list ) List compiler");
