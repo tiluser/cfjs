@@ -899,7 +899,6 @@ Compiler.method("doIndexK", function (gsp) {
     gsp.DataStack.push(gsp.LoopCurrIndexes[2]);
 });
 
-// DOES> only works right now outside a compiled definition
 Compiler.method("doDoes", function (gsp) {
     var currWord = gsp.CreoleForthBundle.Address[gsp.InnerPtr];
     var codeFieldStr = currWord.CodeFieldStr;
