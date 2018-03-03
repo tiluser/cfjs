@@ -58,6 +58,7 @@
             cfb1.Modules.Interpreter.doOuter(gsp);
             document.getElementById('DataStack').value = gsp.DataStack.reverse().join("\n");
             document.getElementById('vlist').innerHTML = gsp.HelpCommentField;
+            document.getElementById('soundArea').innerHTML = gsp.SoundField;
         };    
     </script>
 </head>
@@ -73,6 +74,8 @@
         </td>
     </tr>
 </table>
+<div id="soundArea">
+</div>
 <div id="vlist">
 </div>
 </body>

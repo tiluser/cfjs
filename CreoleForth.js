@@ -61,6 +61,7 @@ var GlobalSimpleProps = function (cfb) {
     this.OutputArea = "";
     this.CurrentVocab = "";
     this.HelpCommentField = "";
+    this.SoundField = "";
     this.CompiledList = [];
     this.BFC = new BasicForthConstants();
     this.MinArgsSwitch = true;   // When true MinArgs is checked
@@ -79,6 +80,7 @@ GlobalSimpleProps.method("cleanFields", function () {
     this.InputArea = "";
     this.OutputArea = "";
     this.HelpCommentField = "";
+    this.SoundField = "";
     this.CompiledList = [];
 });
 
@@ -503,6 +505,7 @@ Compiler.method("doComma", function (gsp) {
     var token = gsp.DataStack.pop();
     var newCreoleWord = gsp.CreoleForthBundle.Address[newRow];
     newCreoleWord.ParamField.push(token);
+    newCreoleWord.ParamFieldStart += 1;
     gsp.ParamFieldPtr = newCreoleWord.ParamField.length - 1;
 });
 
@@ -909,7 +912,7 @@ Compiler.method("doDoes", function (gsp) {
     if (codeFieldStr === "doDoes") {
         execToken = currWord.IndexField;
         console.log("Direct execution of doDoes")
-        gsp.ParamFieldPtr = 2;
+        gsp.ParamFieldPtr = currWord.ParamFieldStart;
         gsp.DataStack.push(execToken);
         gsp.CreoleForthBundle.Modules.Interpreter.doColon(gsp);
     }
@@ -954,6 +957,7 @@ Compiler.method("CompileDoes", function (gsp) {
     // Need the definition's address so doDoes can get it easily either when it's being
     // called from the interpreter for from within a compiled definition
     childCreoleWord.ParamField.push(newRow);
+    childCreoleWord.ParamFieldStart =  childCreoleWord.ParamField.length;
     i = 0;
     while (startCopyPoint < parentCreoleWord.ParamField.length) {
         childCreoleWord.ParamField.push(parentCreoleWord.ParamField[startCopyPoint]);
@@ -1202,10 +1206,11 @@ var func2 = function () {
 };
 
 AppSpec.method("doTest", function (gsp) {
-//    alert("TEST primitive in APPSPEC vocabulary");
-    var dc = gsp.CreoleForthBundle.Modules.Compiler.doColon;
-    var dd = gsp.CreoleForthBundle.Modules.Compiler.doDoes;
-    alert(dd === dc);
+
+});
+
+AppSpec.method("doBeep", function (gsp) {
+    gsp.SoundField = '<embed src="beep-08b.mp3" autostart="false" width="0" height="0" id="sound1">';
 });
 
 var CreoleWord =
@@ -1229,6 +1234,7 @@ var CreoleWord =
         this.IndexField = IndexField;
         this.ParamField = ParamField;
         this.DataField = DataField;
+        this.ParamFieldStart = 0;
 };
 
 var Modules = function (coreprims, interpreter, compiler, logicops, appspec) {
@@ -1392,6 +1398,7 @@ cfb1.BuildPrimitive("CHKON", cfb1.Modules.Compiler.doArgsCheckOn, "Compiler.doAr
 cfb1.BuildPrimitive("\\", cfb1.Modules.Compiler.doSingleLineCmts, "Compiler.doSingleLineCmts", "FORTH", gsp.BFC.ExecZeroAction,"( -- ) Single-line comment handling");
 cfb1.BuildPrimitive("(", cfb1.Modules.Compiler.doParenCmts, "Compiler.doParenCmts", "FORTH", gsp.BFC.ExecZeroAction,"( -- ) Multiline comment handling");
 cfb1.BuildPrimitive("\{", cfb1.Modules.Compiler.doCompileList, "Compiler.doCompileList", "FORTH", gsp.BFC.ExecZeroAction,"( -- list ) List compiler");
+cfb1.BuildPrimitive("BEEP", cfb1.Modules.AppSpec.doBeep, "AppSpec.doBeep", "APPSPEC", "COMPINPF","( -- ) Plays short beeping sound");
 cfb1.BuildPrimitive("TEST", cfb1.Modules.AppSpec.doTest, "AppSpec.doTest", "APPSPEC", "COMPINPF","( -- ) Do what you like here");
 
 cfb1.BuildHighLevel(gsp, ": CONSTANT CREATE , DOES> @ ;", "( val -- ) CONSTANT <name>. Defining word for scalar constants");
