@@ -296,7 +296,7 @@ CorePrims.method("doDrop", function (gsp) {
 });
 
 CorePrims.method("doDepth", function (gsp) {
-    gsp.DataStack.push(gsp.DataStack.length - 1);
+    gsp.DataStack.push(gsp.DataStack.length);
 });
 
 CorePrims.method("doHello", function (gsp) {
