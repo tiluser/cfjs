@@ -6,6 +6,13 @@
              border-collapse: collapse;
              padding: 5px;
          }
+         p {
+             font-family: verdana;
+             font-size: 24px;
+        }
+        h1 {
+            font: Arial;
+        }
         table tr:nth-child(odd) {
             background-color: #f1f1f1;
         }
@@ -65,12 +72,19 @@
 <body>
 <table>
     <tr>
-    <th>Stack</th><th>Input</th>
+    <th>Stack</th><th>Input</th><th>How to use the Creole Forth for JavaScript Page</th>
     </tr>
     <tr>
         <td><textarea id="DataStack" rows="20" cols="8"></textarea></td>
         <td><textarea id="Input" rows="10" cols="75"></textarea>
             <br /><button class="button" onclick="cfjsSubmit()">Submit</button>
+        </td>
+        <td>
+            <p>
+                Please enter the Forth input you want to process in the input box on the left
+                and click the <strong>Submit</strong> button.<br/><br/>
+                <strong>VLIST</strong> gives a list of definitions that can be executed.
+            </p>
         </td>
     </tr>
 </table>
