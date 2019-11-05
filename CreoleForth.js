@@ -268,7 +268,7 @@ CorePrims.method("doTuck", function (gsp) {
     var val1 = gsp.DataStack.pop();
     gsp.DataStack.push(val2);
     gsp.DataStack.push(val1);
-    gsp.DataSta
+    gsp.DataStack.push(val2);
 });
 
 CorePrims.method("doOver", function (gsp) {
